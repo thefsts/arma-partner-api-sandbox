@@ -38,6 +38,8 @@ The Law Shield side already includes:
 
 ARMA-side durable transfer design is documented in `law-shield/arma/lawShieldTransferSchema.ts`, sourced from the existing ARMA feature work and sanitized for this sandbox.
 
+Stop Point 2 added the ARMA outbound half of the contract: a durable transfer state machine (`law-shield/arma/transferService.js`) with human-only disclosure authorization, minimum-necessary redaction, raw-byte receipt verification, ambiguous-failure reconciliation, and a bounded retry policy. See `docs/STOP-POINT-2-REPORT.md`.
+
 ## PATCHES starting point
 
 PATCHES currently exposes only a partner API health endpoint. This sandbox is the place to design and implement the complete partner contract before approved code is ported back to the private PATCHES and ARMA repositories.
@@ -54,6 +56,15 @@ Target PATCHES API capabilities:
 - receipts/audit
 - health/version compatibility
 - ARMA adapters for future Alert ARMA and Domus integration
+
+## Testing
+
+The sandbox runs a real in-process HTTP test harness: every test posts real HTTP requests to a real gateway server wrapped around `arma-integration.js`, with a stub Law Shield processor (idempotency map, receipt signer, and failure modes: rejection, wrong-transfer receipt, hang/timeout, unavailable). The ARMA side is exercised end-to-end through `law-shield/arma/transferService.js` against the same gateway.
+
+- `pnpm test` — runs all suites (48 tests: gateway security matrix, ARMA-side transfer lifecycle, v1 receipt compatibility)
+- `pnpm typecheck` — strict TypeScript check over the schema files
+- Zero runtime dependencies; tests use only `node:test` and Node 24 built-ins
+- All data is synthetic; no real secrets are required (`secret scan` must stay clean)
 
 ## Promotion back to private repos
 
