@@ -24,7 +24,7 @@ Commits this stop point, in order (oldest first):
 
 Base for this stop point: `fd56c14` (origin/main at start, Stop Point 1 approved).
 
-**Push status:** the sandbox has read-only access to `origin` (public clone). All commits above exist locally on `main`, **4 commits ahead of origin/main**. No push was attempted with credentials; no secrets were used or committed. To publish, the owner can push directly, or grant a scoped (repo-scoped, contents:write-only) PAT for this sandbox repo only. **Question for owner:** push directly yourself, or supply a scoped PAT?
+**Push status:** the sandbox has **no authenticated write path** to GitHub. Verified exhaustively: no credential helper configured (repo, user, or system), no `~/.git-credentials` or `~/.netrc`, no `GH_*`/`GITHUB_*`/`GIT_*` credential environment variables, `gh` CLI present but not logged in, SSH publickey authentication denied on port 22 and on `ssh.github.com:443`, and no private keys present anywhere in the environment. Per owner instruction, no credential was requested or placed in the repository, chat, `.env`, scripts, or Git history. All Stop Point 2 commits (the four above plus the report and correction commits) exist locally on `main`, ahead of `origin/main` (`fd56c14`), and a `git bundle` (basis `fd56c14`, exact SHAs, no credentials required) is provided alongside this report so the owner can publish from their authenticated environment.
 
 ## 2. Scope executed (approved fixes D1–D4, no redesign)
 
@@ -66,7 +66,7 @@ Unreachable processors return structured 502 `PROCESSOR_UNAVAILABLE` with `retry
 
 ## 5. Porting notes for the private repos
 
-**Replay guard (first-layer vs authoritative):** the gateway nonce replay guard is an in-memory first layer, fine for the single-instance sandbox. When porting to production (multi-instance), the authoritative nonce registry belongs in the Stop Point 3 durable processor (already planned), keyed by `(schemaVersion, nonce)` with the same validity window. Do not treat the sandbox guard as sufficient for horizontal scaling.
+**Replay guard (first-layer vs authoritative):** the gateway nonce replay guard is an in-memory **defense-in-depth first layer only** — it is NOT authoritative production replay protection (per owner approval of Stop Point 2). When porting to production (multi-instance), the authoritative nonce registry belongs in the Stop Point 3 durable processor at the persistence boundary, keyed by `(schemaVersion, nonce)` with the same validity window, and must be the layer relied upon for replay protection.
 
 **Secrets:** both HMAC secrets and the processor token are read from environment/config and are injectable in tests; nothing is hardcoded. Production values are provisioned by the private repos' secret management, never by this sandbox.
 
