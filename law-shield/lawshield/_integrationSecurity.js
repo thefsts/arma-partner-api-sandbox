@@ -95,3 +95,25 @@ export function signReceipt(receipt) {
 export function getIntegrationReadiness() {
   return { schemaVersion:INTEGRATION_SCHEMA_VERSION, gatewayConfigured:Boolean(process.env.ARMA_TO_LAW_SHIELD_HMAC_SECRET), receiptSigningConfigured:Boolean(process.env.LAW_SHIELD_TO_ARMA_HMAC_SECRET), processorConfigured:Boolean(process.env.LAW_SHIELD_INTEGRATION_PROCESSOR_URL && process.env.LAW_SHIELD_INTEGRATION_PROCESSOR_TOKEN), killSwitchActive:integrationDisabled(), maxBodyBytes:MAX_BODY_BYTES, maxClockSkewMs:MAX_CLOCK_SKEW_MS, allowedRecordTypes:[...ALLOWED_RECORD_TYPES] };
 }
+
+// ---------------------------------------------------------------------------
+// First-layer nonce replay guard (sandbox addition, Stop Point 2).
+// The authoritative replay registry lives in the durable processor (Stop Point 3).
+// This guard protects the gateway itself against duplicate delivery of an
+// already-accepted nonce within the freshness window. Single-instance in-memory:
+// PORTING NOTE — multi-instance deployments must relocate this check to shared
+// storage (alongside the processor nonce registry) before production.
+// Disable via LAW_SHIELD_GATEWAY_REPLAY_GUARD=disabled (default enabled).
+// ---------------------------------------------------------------------------
+const replaySeen=new Map();
+export const replayGuard={
+  enabled(){return String(process.env.LAW_SHIELD_GATEWAY_REPLAY_GUARD??'enabled').toLowerCase()!=='disabled';},
+  remember(nonce){
+    if(!this.enabled())return;
+    const now=Date.now();
+    for(const [seenNonce,at] of replaySeen){if(now-at>2*MAX_CLOCK_SKEW_MS)replaySeen.delete(seenNonce);}
+    if(replaySeen.has(nonce))throw new Error('REPLAYED_NONCE');
+    replaySeen.set(nonce,now);
+  },
+  reset(){replaySeen.clear();},
+};

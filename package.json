@@ -9,8 +9,8 @@
   },
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "test": "node --test law-shield/tests/",
-    "test:lawshield": "node --test law-shield/tests/",
+    "test": "node --test \"law-shield/tests/**/*.test.mjs\"",
+    "test:lawshield": "node --test \"law-shield/tests/**/*.test.mjs\"",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
