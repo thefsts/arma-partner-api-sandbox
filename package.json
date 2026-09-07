@@ -1,0 +1,21 @@
+{
+  "name": "arma-partner-api-sandbox",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Sanitized public integration workspace for ARMA System 360 partner APIs (Law Shield + PATCHES). Synthetic data only.",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "test": "node --test law-shield/tests/",
+    "test:lawshield": "node --test law-shield/tests/",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "convex": "^1.25.0",
+    "typescript": "^5.9.0"
+  }
+}
