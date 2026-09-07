@@ -28,6 +28,12 @@ function timingSafeEqualHex(expected, actual) {
   catch { return false; }
 }
 export function sha256Hex(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+
+// Shared payload-safety check (additive export, Stop Point 2). Lets the ARMA-side
+// envelope builder apply the EXACT perimeter rules locally (fail before leaving ARMA)
+// instead of duplicating the forbidden-key/pattern lists. No behavior change to the
+// gateway; assertNoExecutableOrAiInstructions remains the single source of truth.
+export function assertPayloadSafe(payload) { assertNoExecutableOrAiInstructions(payload); }
 export function integrationDisabled() { return String(process.env.LAW_SHIELD_ARMA_INTEGRATION_DISABLED ?? 'false').toLowerCase() === 'true'; }
 
 function assertNoExecutableOrAiInstructions(value, depth = 0) {
