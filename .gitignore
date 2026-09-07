@@ -1,0 +1,17 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.convex_token
+.vercel/
+coverage/
+dist/
+.next/
+*.log
+*.zip
+*.tar
+*.tar.gz
