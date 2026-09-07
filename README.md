@@ -59,9 +59,9 @@ Target PATCHES API capabilities:
 
 ## Testing
 
-The sandbox runs a real in-process HTTP test harness: every test posts real HTTP requests to a real gateway server wrapped around `arma-integration.js`, with a stub Law Shield processor (idempotency map, receipt signer, and failure modes: rejection, wrong-transfer receipt, hang/timeout, unavailable). The ARMA side is exercised end-to-end through `law-shield/arma/transferService.js` against the same gateway.
+The sandbox runs a real in-process HTTP test harness: every test posts real HTTP requests to a real gateway server wrapped around `arma-integration.js`. The ARMA side is exercised end-to-end through `law-shield/arma/transferService.js` against the same gateway, and Law Shield inbound processing is exercised against a real durable processor (`lawshield/durable/processor.js` + `lawshield/durable/store.js`: authoritative nonce registry, idempotency registry, org/case mapping checks, disclosure policy enforcement, transaction-safe persistence, audit trail, status/reconciliation path) exercised over real HTTP — both directly and through the full ARMA → gateway → processor → signed receipt → ARMA verification chain.
 
-- `pnpm test` — runs all suites (48 tests: gateway security matrix, ARMA-side transfer lifecycle, v1 receipt compatibility)
+- `pnpm test` — runs all suites (71 tests: gateway security matrix, ARMA-side transfer lifecycle, v1 receipt compatibility, durable processor matrix, full synthetic E2E)
 - `pnpm typecheck` — strict TypeScript check over the schema files
 - Zero runtime dependencies; tests use only `node:test` and Node 24 built-ins
 - All data is synthetic; no real secrets are required (`secret scan` must stay clean)
