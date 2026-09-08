@@ -9,7 +9,8 @@
     "skipLibCheck": true,
     "exactOptionalPropertyTypes": false,
     "types": ["node"],
-    "allowJs": false
+    "allowJs": false,
+    "allowImportingTsExtensions": true
   },
   "include": ["law-shield/arma/**/*.ts", "patches/**/*.ts"],
   "exclude": ["node_modules"]
