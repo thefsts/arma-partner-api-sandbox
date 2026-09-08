@@ -8,14 +8,15 @@ Per the standing directive, Stop Point 6 (AI safety + governance contract) has N
 ## 1. Publication record
 
 - **Repository:** `thefsts/arma-partner-api-sandbox` (public sandbox), branch `main`
-- **Final remote HEAD SHA (SP5 close):** `a8e282fd943aa755693be2e8b287b6a025cdb8d5` (this report commit; its own CI run `34178394423` — completed/success, same gates)
+- **Final remote HEAD SHA (SP5 close):** this report, including its closing note, is the last commit of Stop Point 5 — the authoritative close SHA is `git rev-parse origin/main` at owner review. The full SP5 commit chain is listed below; no work follows this file.
 - **Baseline before this stop point:** `a107548e30d352a711c1ac26b6d81529a1fa4124` (SP4 approved close, CI GREEN run 34173198420, 101/101 tests)
-- **Pushes:** fast-forward only (`a107548..51182e8`, then `51182e8..a8e282f`), no force push, no history rewrite — PUBLICATION RULE honored
-- **Commits added this stop point (2):**
-  - `51182e8` — `feat(patches): ARMA PATCHES adapter (SP5) — signed partner client, durable activation state machine, 11-table reference schema, 48-test matrix` (CI run `34178226647`, completed/success)
+- **Pushes:** fast-forward only (`a107548..51182e8`, `51182e8..a8e282f`, then the report close-out), no force push, no history rewrite — PUBLICATION RULE honored
+- **Commits added this stop point:**
+  - `51182e8` — `feat(patches): ARMA PATCHES adapter (SP5) — signed partner client, durable activation state machine, 11-table reference schema, 48-test matrix` (CI run `34178226647`, completed/success) — 8 files changed, 3039 insertions(+), 4 deletions(-)
   - `a8e282f` — `docs: stop point 5 report — ARMA PATCHES adapter evidence, 149-test totals, CI run, defects found/fixed, porting notes, SP6 proposal` (CI run `34178394423`, completed/success)
-  - **Author and committer on both:** `THEFSTS <amorebey@gmail.com>` (verified via `git show --format`)
-  - Feature commit: 8 files changed, 3039 insertions(+), 4 deletions(-)
+  - `ff95cfe` — `docs: stop point 5 report addendum — final remote HEAD, both CI runs recorded` — records both CI runs in the publication record
+  - final close-out note (this commit) — SHA-stable close wording; the SP5 lane ends here
+  - **Author and committer on every SP5 commit:** `THEFSTS <amorebey@gmail.com>` (verified via `git show --format`)
 - **Files in the commit:**
   - Added: `patches/arma/patchesPartnerClient.ts` (671), `patches/arma/activationService.ts` (704), `patches/arma/armaStore.ts` (201), `patches/arma/transferSchema.ts` (197), `patches/tests/partner.client.test.mjs` (1159), `docs/SP5-CONTRACT-SURFACES.md` (87)
   - Modified: `README.md` (ARMA PATCHES adapter section, 149-test totals, adapter testing description), `.env.example` (`ARMA_PATCHES_OUTBOUND_DISABLED` ARMA-side outbound kill-switch placeholder)
@@ -127,4 +128,4 @@ Per the standing directive, the following is the exact owner-approved scope for 
 
 ---
 
-**STOP.** Stop Point 5 is published and certified: final remote HEAD `a8e282fd943aa755693be2e8b287b6a025cdb8d5` (report commit; adapter commit `51182e8`, CI runs 34178226647 and 34178394423 both GREEN), 149/149 tests, typecheck GREEN, secret scan clean. Awaiting owner decision on the Stop Point 6 proposal above. No further work will begin without explicit approval.
+**STOP.** Stop Point 5 is published and certified: adapter commit `51182e8` (CI run `34178226647`, GREEN) + report commits (`a8e282f` addenda, CI run `34178394423`, GREEN), 149/149 tests, typecheck GREEN, secret scan clean. The final remote HEAD is the last SP5 commit on `main` — `git rev-parse origin/main` at owner review gives the authoritative close SHA. Awaiting owner decision on the Stop Point 6 proposal above. No further work will begin without explicit approval.
