@@ -13,7 +13,8 @@ Per the standing directive, Stop Point 7 (Shared Partner SDK, Partner Registry C
 - **Pushes:** fast-forward only (`e43ac8a..6ae2baf`, then the report commit), no force push, no history rewrite — PUBLICATION RULE honored
 - **Commits added this stop point:**
   - `6ae2baf` — `feat: stop point 6 — AI safety + governance contract (advisory-only AI, fail-closed protected actions, provenance, guards)` (CI run `34237287938`, completed/success) — 21 files changed, 4151 insertions(+), 6 deletions(-)
-  - report commit (this file) — CI run recorded in §2
+  - report commits (this file) — CI runs recorded in §2
+  - final close-out commit — records the certified report-close CI run (`34239672897`, GREEN) in §2
   - **Author and committer on every SP6 commit:** `THEFSTS <amorebey@gmail.com>` (verified via `git show --format`)
 - **Files in the feature commit:**
   - Added: `ai-governance/classification.ts` (173), `ai-governance/provenance.ts` (401), `ai-governance/provenanceIntegrity.ts` (47), `ai-governance/protectedActions.ts` (370), `ai-governance/deterministicRules.ts` (306), `ai-governance/externalDataGuard.ts` (238), `ai-governance/aiOutputGuard.ts` (149), `ai-governance/humanReview.ts` (157), `ai-governance/audit.ts` (134), `ai-governance/store.ts` (144), `ai-governance/index.ts` (18)
@@ -29,7 +30,10 @@ Per the standing directive, Stop Point 7 (Shared Partner SDK, Partner Registry C
 - Job: `verify` (all 12 steps success), started `2026-09-08T14:17:13Z`, completed `2026-09-08T14:17:35Z` (22s)
 - **Report-commit CI runs (full history for the record):**
   - Run `34237668332` (first attempt, original report wording) — cancelled after the runner hung >11 min on the Tests step (runner-side stall; the identical suite passed GREEN in 22s on the feature commit and the report commit adds only this docs file)
-  - Run `34237668332` (rerun of the same commit) — Tests step GREEN (~2s), but the informational secret-scan step flagged a false positive **in this report's own prose**: a hyphenated compound naming task and designation matched the `sk-[A-Za-z0-9]{8,}` informational pattern (the `sk-` prefix immediately followed by the word "designation"). No real secret was involved — the wording tripped the scanner. The compound has been rewritten with a slash separator in this commit so the scan passes; the failure was introduced by this report's wording, not by any repo content or code change.
+  - Run `34237668332` (rerun of the same commit) — Tests step GREEN (~2s), but the informational secret-scan step flagged a false positive **in this report's own prose**: a hyphenated compound naming task and designation matched the `sk-[A-Za-z0-9]{8,}` informational pattern (the `sk-` prefix immediately followed by the word "designation"). No real secret was involved — the wording tripped the scanner. The failure was introduced by this report's wording, not by any repo content or code change.
+  - Run `34239469635` (first addendum, commit `df78c0e`) — same scan failure, because the CI-history note quoted the offending compound while explaining it; the fix text itself tripped the same pattern.
+  - Run `34239672897` (final wording, commit `5b82335`) — **completed / success**: all steps GREEN including the informational secret scan. This is the certified report-close CI run for the report wording.
+  - Run `[PENDING]` (final close-out commit, this file with the CI record) — conclusion recorded at owner review; the identical docs-only change carries no scan surface, and the exact scan command was verified clean against this commit's tree before pushing.
 
 ## 3. Exact local test totals (same commands CI runs)
 
@@ -182,4 +186,4 @@ Per the standing directive, the following is the exact owner-approved scope for 
 
 ---
 
-**STOP.** Stop Point 6 is published and certified: feature commit `6ae2baf` (CI run `34237287938`, GREEN) + this report commit, 205/205 tests (71 law-shield + 30 patches contract + 48 patches adapter + 56 ai-governance), typecheck GREEN, secret scan clean, fast-forward publication only. The final remote HEAD is the last SP6 commit on `main` — `git rev-parse origin/main` at owner review gives the authoritative close SHA. Awaiting owner decision on the Stop Point 7 proposal above. No further work will begin without explicit approval.
+**STOP.** Stop Point 6 is published and certified: feature commit `6ae2baf` (CI run `34237287938`, GREEN) + report chain (`f3fd39a`, `df78c0e`, `5b82335` with certified GREEN run `34239672897`, and this close-out), 205/205 tests (71 law-shield + 30 patches contract + 48 patches adapter + 56 ai-governance), typecheck GREEN, secret scan clean on the final tree, fast-forward publication only. The final remote HEAD is the last SP6 commit on `main` — `git rev-parse origin/main` at owner review gives the authoritative close SHA. Awaiting owner decision on the Stop Point 7 proposal above. No further work will begin without explicit approval.
