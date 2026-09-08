@@ -9,8 +9,9 @@
   },
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "test": "node --test \"law-shield/tests/**/*.test.mjs\" \"patches/tests/**/*.test.mjs\"",
+    "test": "node --test \"law-shield/tests/**/*.test.mjs\" \"patches/tests/**/*.test.mjs\" \"ai-governance/tests/**/*.test.mjs\"",
     "test:lawshield": "node --test \"law-shield/tests/**/*.test.mjs\"",
+    "test:aigov": "node --test \"ai-governance/tests/**/*.test.mjs\"",
     "typecheck": "tsc -p tsconfig.json",
     "test:patches": "node --test \"patches/tests/**/*.test.mjs\""
   },
