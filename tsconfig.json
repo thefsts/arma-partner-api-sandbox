@@ -12,6 +12,6 @@
     "allowJs": false,
     "allowImportingTsExtensions": true
   },
-  "include": ["law-shield/arma/**/*.ts", "patches/**/*.ts", "ai-governance/**/*.ts"],
+  "include": ["law-shield/arma/**/*.ts", "patches/**/*.ts", "ai-governance/**/*.ts", "shared/**/*.ts"],
   "exclude": ["node_modules"]
 }
