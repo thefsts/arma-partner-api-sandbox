@@ -33,7 +33,8 @@ Per the standing directive, Stop Point 7 (Shared Partner SDK, Partner Registry C
   - Run `34237668332` (rerun of the same commit) — Tests step GREEN (~2s), but the informational secret-scan step flagged a false positive **in this report's own prose**: a hyphenated compound naming task and designation matched the `sk-[A-Za-z0-9]{8,}` informational pattern (the `sk-` prefix immediately followed by the word "designation"). No real secret was involved — the wording tripped the scanner. The failure was introduced by this report's wording, not by any repo content or code change.
   - Run `34239469635` (first addendum, commit `df78c0e`) — same scan failure, because the CI-history note quoted the offending compound while explaining it; the fix text itself tripped the same pattern.
   - Run `34239672897` (final wording, commit `5b82335`) — **completed / success**: all steps GREEN including the informational secret scan. This is the certified report-close CI run for the report wording.
-  - Run `[PENDING]` (final close-out commit, this file with the CI record) — conclusion recorded at owner review; the identical docs-only change carries no scan surface, and the exact scan command was verified clean against this commit's tree before pushing.
+  - Run `34239829043` (close-out commit `d3e8d9a`) — **completed / success**: the run stalled on the Tests step (same runner-side signature as the first report-commit run), was cancelled and re-run, and the rerun completed GREEN in ~70s. All steps GREEN including the informational secret scan.
+  - This final commit's own run is visible in the repository's Actions history; per the SP5 close-out precedent the report does not embed its own run ID — the authoritative close state is `git rev-parse origin/main` at owner review.
 
 ## 3. Exact local test totals (same commands CI runs)
 
