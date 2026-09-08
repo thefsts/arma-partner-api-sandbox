@@ -8,20 +8,21 @@ Per the standing directive, Stop Point 6 (AI safety + governance contract) has N
 ## 1. Publication record
 
 - **Repository:** `thefsts/arma-partner-api-sandbox` (public sandbox), branch `main`
-- **Remote HEAD SHA:** `51182e863f7cda16814dabe3778f457d8a279d93`
+- **Final remote HEAD SHA (SP5 close):** `a8e282fd943aa755693be2e8b287b6a025cdb8d5` (this report commit; its own CI run `34178394423` — completed/success, same gates)
 - **Baseline before this stop point:** `a107548e30d352a711c1ac26b6d81529a1fa4124` (SP4 approved close, CI GREEN run 34173198420, 101/101 tests)
-- **Push:** fast-forward only (`a107548..51182e8`), no force push, no history rewrite — PUBLICATION RULE honored
-- **Commits added this stop point (1):**
-  - `51182e8` — `feat(patches): ARMA PATCHES adapter (SP5) — signed partner client, durable activation state machine, 11-table reference schema, 48-test matrix`
-  - **Author and committer:** `THEFSTS <amorebey@gmail.com>` (verified via `git show --format`)
-  - 8 files changed, 3039 insertions(+), 4 deletions(-)
+- **Pushes:** fast-forward only (`a107548..51182e8`, then `51182e8..a8e282f`), no force push, no history rewrite — PUBLICATION RULE honored
+- **Commits added this stop point (2):**
+  - `51182e8` — `feat(patches): ARMA PATCHES adapter (SP5) — signed partner client, durable activation state machine, 11-table reference schema, 48-test matrix` (CI run `34178226647`, completed/success)
+  - `a8e282f` — `docs: stop point 5 report — ARMA PATCHES adapter evidence, 149-test totals, CI run, defects found/fixed, porting notes, SP6 proposal` (CI run `34178394423`, completed/success)
+  - **Author and committer on both:** `THEFSTS <amorebey@gmail.com>` (verified via `git show --format`)
+  - Feature commit: 8 files changed, 3039 insertions(+), 4 deletions(-)
 - **Files in the commit:**
   - Added: `patches/arma/patchesPartnerClient.ts` (671), `patches/arma/activationService.ts` (704), `patches/arma/armaStore.ts` (201), `patches/arma/transferSchema.ts` (197), `patches/tests/partner.client.test.mjs` (1159), `docs/SP5-CONTRACT-SURFACES.md` (87)
   - Modified: `README.md` (ARMA PATCHES adapter section, 149-test totals, adapter testing description), `.env.example` (`ARMA_PATCHES_OUTBOUND_DISABLED` ARMA-side outbound kill-switch placeholder)
 
 ## 2. CI evidence
 
-- **CI run ID:** `34178226647` — workflow "CI" on commit `51182e8`
+- **CI run ID:** `34178226647` — workflow "CI" on adapter commit `51182e8`
 - **CI URL:** https://github.com/thefsts/arma-partner-api-sandbox/actions/runs/34178226647
 - **Conclusion:** `completed / success`
 - **Job steps (all success):** Set up job, checkout, pnpm setup, Node 24 setup, Install (`pnpm install --frozen-lockfile`), **Typecheck (`pnpm typecheck`) GREEN**, **Tests (synthetic only) (`pnpm test`) GREEN**, **Secret scan GREEN (no match)**, post steps
@@ -126,4 +127,4 @@ Per the standing directive, the following is the exact owner-approved scope for 
 
 ---
 
-**STOP.** Stop Point 5 is published and certified: remote HEAD `51182e863f7cda16814dabe3778f457d8a279d93`, CI run 34178226647 GREEN, 149/149 tests, typecheck GREEN, secret scan clean. Awaiting owner decision on the Stop Point 6 proposal above. No further work will begin without explicit approval.
+**STOP.** Stop Point 5 is published and certified: final remote HEAD `a8e282fd943aa755693be2e8b287b6a025cdb8d5` (report commit; adapter commit `51182e8`, CI runs 34178226647 and 34178394423 both GREEN), 149/149 tests, typecheck GREEN, secret scan clean. Awaiting owner decision on the Stop Point 6 proposal above. No further work will begin without explicit approval.
