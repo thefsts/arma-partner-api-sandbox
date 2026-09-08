@@ -29,7 +29,7 @@ Per the standing directive, Stop Point 7 (Shared Partner SDK, Partner Registry C
 - Job: `verify` (all 12 steps success), started `2026-09-08T14:17:13Z`, completed `2026-09-08T14:17:35Z` (22s)
 - **Report-commit CI runs (full history for the record):**
   - Run `34237668332` (first attempt, original report wording) — cancelled after the runner hung >11 min on the Tests step (runner-side stall; the identical suite passed GREEN in 22s on the feature commit and the report commit adds only this docs file)
-  - Run `34237668332` (rerun of the same commit) — Tests step GREEN (~2s), but the informational secret-scan step flagged a false positive **in this report's own §4 prose**: the phrase "task-designation pairs" matched the `sk-[A-Za-z0-9]{8,}` informational pattern (`sk-designation`). No real secret was involved — the wording tripped the scanner. The prose has been corrected in this commit ("task/designation pairs") so the scan passes. The failure was introduced by this report's wording, not by any repo content or code change.
+  - Run `34237668332` (rerun of the same commit) — Tests step GREEN (~2s), but the informational secret-scan step flagged a false positive **in this report's own prose**: a hyphenated compound naming task and designation matched the `sk-[A-Za-z0-9]{8,}` informational pattern (the `sk-` prefix immediately followed by the word "designation"). No real secret was involved — the wording tripped the scanner. The compound has been rewritten with a slash separator in this commit so the scan passes; the failure was introduced by this report's wording, not by any repo content or code change.
 
 ## 3. Exact local test totals (same commands CI runs)
 
