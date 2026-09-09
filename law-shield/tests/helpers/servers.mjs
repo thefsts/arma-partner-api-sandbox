@@ -78,6 +78,7 @@ export async function startGateway({ port = 0 } = {}) {
   const mod = await import(`file://${process.cwd()}/law-shield/lawshield/arma-integration.js`);
   const server = createServer(mod.default);
   await new Promise((r) => server.listen(port, '127.0.0.1', r));
+  server.unref(); // a skipped cleanup() must never pin the event loop (SP10 red-gate cascade fix)
   return { server, port: server.address().port, close: () => new Promise((r) => server.close(r)) };
 }
 
@@ -85,6 +86,7 @@ export async function startReadiness({ port = 0 } = {}) {
   const mod = await import(`file://${process.cwd()}/law-shield/lawshield/integration-readiness.js`);
   const server = createServer(mod.default);
   await new Promise((r) => server.listen(port, '127.0.0.1', r));
+  server.unref(); // a skipped cleanup() must never pin the event loop (SP10 red-gate cascade fix)
   return { server, port: server.address().port, close: () => new Promise((r) => server.close(r)) };
 }
 
@@ -123,6 +125,7 @@ export async function startProcessor({ port = 0, mode = 'healthy', accepted = {}
     });
   });
   await new Promise((r) => server.listen(port, '127.0.0.1', r));
+  server.unref(); // a skipped cleanup() must never pin the event loop (SP10 red-gate cascade fix)
   return { server, port: server.address().port, close: () => new Promise((r) => server.close(r)), seen };
 }
 

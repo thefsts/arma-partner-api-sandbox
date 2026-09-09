@@ -153,9 +153,13 @@ test('invalid receipt signature (200 with tampered receipt) fails closed to reco
     const response = await realFetch(url, init);
     const rawBody = await response.text();
     const tampered = rawBody.replace('ACCEPTED', 'ACCEPTED'); // keep status; corrupt signature instead
+    // Deterministic tamper: flip the signature's first hex nibble via char arithmetic.
+    // If the first char is already 'f' the replacement below is a no-op, so map
+    // any first char to a GUARANTEED different char: 'f' -> '0', anything else -> 'f'.
+    const tamperSignature = (sig) => sig.charAt(0) === 'f' ? '0' + sig.slice(1) : 'f' + sig.slice(1);
     return {
       status: response.status,
-      headers: new Headers(Object.fromEntries([...response.headers.entries()].map(([k, v]) => [k, k.toLowerCase() === 'x-lawshield-signature' ? v.replace(/./, 'f') : v]))),
+      headers: new Headers(Object.fromEntries([...response.headers.entries()].map(([k, v]) => [k, k.toLowerCase() === 'x-lawshield-signature' ? tamperSignature(v) : v]))),
       text: async () => tampered,
     };
   };

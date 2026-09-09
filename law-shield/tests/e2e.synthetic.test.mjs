@@ -29,6 +29,7 @@ async function bootE2E() {
   const processorStore = seedSyntheticProcessorDirectory(new SyntheticDurableLawShieldStore());
   const processorServer = createServer(createDurableProcessorServer({ store: processorStore, token: PROCESSOR_TOKEN }));
   await new Promise((r) => processorServer.listen(0, '127.0.0.1', r));
+  processorServer.unref(); // a skipped close() must never pin the event loop (SP10 red-gate cascade fix)
   const processorPort = processorServer.address().port;
   const restore = applyTestEnv({
     LAW_SHIELD_INTEGRATION_PROCESSOR_URL: `http://127.0.0.1:${processorPort}/process`,

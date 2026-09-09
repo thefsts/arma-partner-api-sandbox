@@ -395,6 +395,7 @@ test('live conformance: Law Shield — transfer submission, receipt, readiness, 
   const store = seedSyntheticProcessorDirectory(new SyntheticDurableLawShieldStore());
   const processorServer = createServer(createDurableProcessorServer({ store, token: PROCESSOR_TOKEN }));
   await new Promise((r) => processorServer.listen(0, '127.0.0.1', r));
+  processorServer.unref(); // a skipped/failed teardown must never pin the event loop (SP10 red-gate cascade fix)
   const processorPort = processorServer.address().port;
 
   // Gateway env: signing + receipt secrets + the real processor.

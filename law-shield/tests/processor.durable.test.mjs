@@ -83,6 +83,7 @@ async function bootDurable({ env = {} } = {}) {
   const store = seedSyntheticProcessorDirectory(new SyntheticDurableLawShieldStore());
   const server = createServer(createDurableProcessorServer({ store, token: PROCESSOR_TOKEN }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  server.unref(); // a skipped close() must never pin the event loop (SP10 red-gate cascade fix)
   const port = server.address().port;
   const restore = applyTestEnv({
     LAW_SHIELD_INTEGRATION_PROCESSOR_URL: `http://127.0.0.1:${port}/process`,
@@ -100,6 +101,7 @@ async function bootFull(env = {}) {
   const processorStore = seedSyntheticProcessorDirectory(new SyntheticDurableLawShieldStore());
   const processorServer = createServer(createDurableProcessorServer({ store: processorStore, token: PROCESSOR_TOKEN }));
   await new Promise((r) => processorServer.listen(0, '127.0.0.1', r));
+  processorServer.unref(); // a skipped close() must never pin the event loop (SP10 red-gate cascade fix)
   const processorPort = processorServer.address().port;
   const restore = applyTestEnv({
     LAW_SHIELD_INTEGRATION_PROCESSOR_URL: `http://127.0.0.1:${processorPort}/process`,
@@ -661,11 +663,15 @@ test('18. tampered receipt fails closed to reconciliation', async () => {
   h.service.fetchImpl = async (url, init) => {
     const response = await realFetch(url, init);
     const rawBody = await response.text();
-    // Corrupt the signature header (one hex digit swapped) — same discipline
-    // as the ARMA-side suite, now against the REAL durable processor.
+    // Corrupt the signature header — same discipline as the ARMA-side suite,
+    // now against the REAL durable processor. Deterministic tamper: map the
+    // first hex char to a GUARANTEED different char ('f' -> '0', anything
+    // else -> 'f') so the corruption is never a no-op (first char already
+    // 'f' happens ~1/16 of sends).
+    const tamperSignature = (sig) => sig.charAt(0) === 'f' ? '0' + sig.slice(1) : 'f' + sig.slice(1);
     return {
       status: response.status,
-      headers: new Headers(Object.fromEntries([...response.headers.entries()].map(([k, v]) => [k, k.toLowerCase() === 'x-lawshield-signature' ? v.replace(/./, 'f') : v]))),
+      headers: new Headers(Object.fromEntries([...response.headers.entries()].map(([k, v]) => [k, k.toLowerCase() === 'x-lawshield-signature' ? tamperSignature(v) : v]))),
       text: async () => rawBody,
     };
   };
