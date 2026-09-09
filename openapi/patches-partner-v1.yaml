@@ -1,0 +1,2182 @@
+# PATCHES Partner API v1 — OpenAPI 3.1 contract
+#
+# Grounded 100% in the reference implementation at repo baseline 465a3ae:
+#   patches/lib/server.ts                     (HTTP handler, routes, pipelines)
+#   patches/lib/security.ts                   (scoped partner auth + HMAC + replay)
+#   patches/lib/policy.ts                     (org -> entitlement -> capability -> binding)
+#   patches/lib/receipts.ts                   (raw-byte receipt signing/verification)
+#   patches/lib/rateLimit.ts                  (per-clientId token bucket)
+#   patches/lib/store.ts                      (record shapes, transactional writes)
+#   patches/patches/partner-v1-health-route.ts (platform-mounted live health route)
+# Exercised end-to-end over real HTTP by the patches test matrix
+# (partner.api 27-scenario matrix + partner.client adapter lane) in CI.
+#
+# Nothing here is invented: every operation, header, field, status code, and
+# error code exists in the sources above. Internal-only material (synthetic
+# test secrets, fail-point injection, private deployment details, the ops-level
+# credential-rotation library functions) is intentionally excluded.
+openapi: 3.1.0
+info:
+  title: PATCHES Partner API
+  version: 1.0.0
+  summary: Partner-facing activation lifecycle API — scoped HMAC authentication, tenant-scoped discovery, idempotent activations with raw-byte signed receipts, events, and scrubbed audit.
+  description: |
+    Wire contract for the PATCHES Partner API v1 (receipt protocol schema
+    `patches-partner-v1`).
+
+    Scope — exactly the implemented v1 surface (all routes under
+    `/api/partner/v1`):
+      * `GET  /health`                                — live readiness (unauthenticated)
+      * `GET  /capabilities`                          — capability discovery
+      * `GET  /entitlements?orgId=...`                — tenant-scoped entitlement lookup
+      * `POST /activations`                           — idempotent activation create
+      * `GET  /activations/{activationId}`            — activation status
+      * `POST /activations/{activationId}/deactivate` — deactivate (idempotent by status)
+      * `POST /activations/{activationId}/revoke`     — revoke (terminal)
+      * `GET  /events?orgId=...`                      — activation events
+      * `GET  /audit?orgId=...`                       — scrubbed audit trail (own orgs only)
+
+    Versioning: only `v1` is supported. A request to any other version segment
+    (e.g. `/api/partner/v2/...`) fails closed with 400
+    `{ error: 'UNSUPPORTED_API_VERSION', errorClass: 'VERSION', supported: ['v1'], requestId }`.
+
+    Authentication (cumulative — never a substitute for tenant scoping):
+    HMAC-SHA256 request signing per the `PatchesSignedRequest` scheme. Signature
+    verification is the first gate only; every operation additionally enforces
+    organization ownership, entitlement license windows, capability
+    registration, and device/subject binding. Rate limiting (token bucket,
+    capacity 30, refill 10 per second, per clientId) applies AFTER
+    authentication so anonymous floods cannot consume partner quota.
+
+    Request integrity:
+      * timestamps must be within 300000 ms (±5 minutes) of server time
+      * nonces match `[A-Za-z0-9_-]{20,128}`, are single-use, and have a
+        600000 ms (10 minutes) validity window; a fully processed request
+        registers its nonce in the SAME transaction as the operation outcome
+      * request bodies are limited to 262144 bytes (256 KiB); every POST route
+        requires a JSON object body (deactivate/revoke bodies are
+        present-but-ignored — the activation is identified by the path)
+
+    Error shapes — two families (all JSON, all structured, no raw messages):
+      * handler-level errors (authentication, rate limit, malformed or
+        oversized body, unsupported version, unmatched route) carry `requestId`
+        in the body
+      * business-pipeline errors on POST routes (policy denials, idempotency
+        conflict, state conflict, unknown activation, downstream, persistence)
+        carry `{ error, errorClass }` WITHOUT `requestId` in the body — the
+        `x-request-id` response header always carries it
+      * `ACTIVATION_INPUT_MISSING` uniquely carries `{ error, fields }`
+        (no `errorClass`)
+      * the kill-switch 503 `PARTNER_API_DISABLED` is a single-key body
+
+    There is no 405 in this API: a method that does not match the route falls
+    through to 404 `NOT_FOUND` (with `requestId`).
+
+    Idempotency (`POST /activations`, keyed by clientId + idempotencyKey):
+      * same request hash → 200 duplicate receipt (`duplicate: true`, receiptId
+        `RCP-DUP-<requestId>`) that echoes the ORIGINAL activation
+      * different request hash → 409 `IDEMPOTENCY_KEY_CONFLICT`
+      * the request hash is sha256 over the serialized request object, so any
+        semantic difference — including extra fields — is a conflict, never a
+        silent duplicate
+      * deactivate/revoke are idempotent by STATUS (second call is a no-op
+        success receipt); REVOKED is terminal — deactivating a REVOKED
+        activation is 409 `ACTIVATION_REVOKED`
+
+    Receipts: every 200 on a POST route is a receipt signed over its EXACT raw
+    response bytes — verify the bytes you received, never a re-serialization:
+      * `x-patches-receipt-id`, `x-patches-content-sha256` (sha256 of the raw
+        response bytes), `x-patches-signature` (hex HMAC-SHA256 over the raw
+        bytes with the receipt secret)
+      * verification fails closed with reasons `RECEIPT_MISSING_HEADERS`,
+        `RECEIPT_INVALID_SIGNATURE`, `RECEIPT_CONTENT_HASH_MISMATCH`,
+        `RECEIPT_BODY_MALFORMED`, `RECEIPT_FIELD_MISMATCH`
+      * GET routes never produce receipt headers; error bodies are never
+        receipts
+
+    Every response carries `x-request-id` (echoing the caller's `x-request-id`
+    header when present, else `req-<uuid>`), `x-api-version: v1`, and
+    `cache-control: no-store` — except the kill-switch 503s, which are emitted
+    before request-id assignment and carry only the baseline headers.
+
+    Fail-closed guarantees:
+      * downstream protection failure (503 `DOWNSTREAM_UNAVAILABLE`) persists
+        NOTHING — no partial activation, no receipt, no event
+      * persistence failure (500 `PARTNER_PERSISTENCE_FAILED`) leaves no
+        partial state (single transaction) and does NOT register the nonce
+      * kill switch (`PATCHES_PARTNER_API_DISABLED=true`) blocks every route
+        except health, which reports the disabled state live (503, never
+        cached)
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+
+servers:
+  - url: '{protocol}://{partnerApiHost}'
+    description: PATCHES Partner API (partner-facing; all routes under /api/partner/v1)
+    variables:
+      protocol:
+        default: https
+        enum: [https, http]
+      partnerApiHost:
+        default: partner.api.example.invalid
+
+tags:
+  - name: Health
+    description: Live readiness — unauthenticated, never cached, reflects the kill switch.
+  - name: Discovery
+    description: Capability and entitlement discovery — authenticated, tenant-scoped.
+  - name: Activations
+    description: Activation lifecycle — idempotent create, status, deactivate, revoke (raw-byte signed receipts on state changes).
+  - name: Events and Audit
+    description: Tenant-scoped activation events and scrubbed audit trail.
+
+security:
+  - PatchesSignedRequest: []
+
+paths:
+  /api/partner/v1/health:
+    get:
+      operationId: getHealth
+      tags: [Health]
+      summary: Live readiness probe (unauthenticated).
+      description: |
+        Live health — computed fresh on every request, never cached (a cached
+        health probe would lie about the kill switch).
+
+        When `PATCHES_PARTNER_API_DISABLED=true` this route reports the disabled
+        state itself (503 with `status: 'disabled'`) while every other route
+        fails closed with the single-key 503 `PARTNER_API_DISABLED`. The 503
+        disabled body omits `capabilities`/`supportedApiVersions` and is
+        emitted before request-id assignment, so it carries no `x-request-id`
+        header. Any non-GET method on this path falls through to 404
+        `NOT_FOUND`.
+      security: []
+      responses:
+        '200':
+          description: Service available — live readiness payload.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthAvailable'
+              examples:
+                available:
+                  $ref: '#/components/examples/HealthAvailable'
+        '503':
+          description: 'Kill switch active — live disabled payload (no `x-request-id` header on this response).'
+          headers:
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthDisabled'
+              examples:
+                disabled:
+                  $ref: '#/components/examples/HealthDisabled'
+        default:
+          description: 'Unmatched method — 404 NOT_FOUND (there is no 405 in this API).'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+              examples:
+                notFound:
+                  $ref: '#/components/examples/RouteNotFound'
+
+  /api/partner/v1/capabilities:
+    get:
+      operationId: listCapabilities
+      tags: [Discovery]
+      summary: List registered capabilities.
+      description: |
+        Capability discovery — the registered capability directory with each
+        capability's supported API-version window. Authenticated (signed
+        request); no tenant scoping (the directory is global). A non-GET
+        method on this path falls through to 404 `NOT_FOUND`.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+      responses:
+        '200':
+          description: Registered capabilities with version windows.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityList'
+              examples:
+                capabilities:
+                  $ref: '#/components/examples/CapabilityList'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '409':
+          $ref: '#/components/responses/NonceReplayed409'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '503':
+          $ref: '#/components/responses/ApiDisabled503'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+  /api/partner/v1/entitlements:
+    get:
+      operationId: listEntitlements
+      tags: [Discovery]
+      summary: List entitlements for one organization (tenant-scoped).
+      description: |
+        Entitlement lookup for a single organization. The authenticated
+        partner must own the organization (`owningPartnerId` is the tenant
+        boundary) — a query for another partner's org is 403 with the org
+        authorization code. A missing `orgId` query parameter is 400
+        `ORG_ID_REQUIRED`.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+        - $ref: '#/components/parameters/OrgIdQuery'
+      responses:
+        '200':
+          description: Entitlements for the requested organization.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntitlementList'
+              examples:
+                entitlements:
+                  $ref: '#/components/examples/EntitlementList'
+        '400':
+          description: 'Missing required query parameter — `ORG_ID_REQUIRED`.'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgIdRequiredError'
+              examples:
+                orgIdRequired:
+                  $ref: '#/components/examples/OrgIdRequired'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '403':
+          description: |
+            Organization authorization failed (tenant boundary). GET-route
+            policy errors carry `requestId` in the body.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgAuthorizationError'
+              examples:
+                orgNotBound:
+                  $ref: '#/components/examples/PolicyOrgNotBoundGet'
+        '409':
+          $ref: '#/components/responses/NonceReplayed409'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '503':
+          $ref: '#/components/responses/ApiDisabled503'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+  /api/partner/v1/activations:
+    post:
+      operationId: createActivation
+      tags: [Activations]
+      summary: Create an activation (idempotent).
+      description: |
+        Activation create. Pipeline (in enforcement order — all cumulative,
+        none replaces another): organization authorization → entitlement
+        (status + license window) → capability (registered + version window) →
+        device/subject binding (exists, ACTIVE, same org, same capability) →
+        idempotency resolution → downstream protection check (fail-closed) →
+        ONE transaction (activation + receipt + idempotency record + event +
+        audit).
+
+        Idempotency (clientId + idempotencyKey):
+          * FRESH → 200 receipt (`RCP-ACT-<requestId>`; activation
+            `ACT-<requestId>`; event `activation.created`)
+          * DUPLICATE (same request hash) → 200 duplicate receipt
+            (`RCP-DUP-<requestId>`, `duplicate: true`) echoing the ORIGINAL
+            activation — no second activation is created
+          * CONFLICT (different request hash) → 409 `IDEMPOTENCY_KEY_CONFLICT`
+            with `existingActivationId`
+
+        The request hash is sha256 over the serialized request object, so extra
+        body fields participate in idempotency identity.
+
+        Error-body note: business-pipeline errors (403 policy, 409 idempotency
+        conflict, 500 persistence, 503 downstream) carry `{ error, errorClass }`
+        WITHOUT `requestId` in the body — the `x-request-id` header carries it.
+        Handler-level errors (auth, rate limit, malformed/oversized body) DO
+        carry `requestId`. `ACTIVATION_INPUT_MISSING` carries
+        `{ error, fields }` (no `errorClass`). A defensive `INVALID_BODY`
+        (`{ error, errorClass: 'INPUT', requestId }`) exists for unexpected
+        body-read failures.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+      requestBody:
+        description: |
+          Activation input. All four fields are required strings. Additional
+          fields are permitted and participate in the request hash (a retry
+          with any semantic difference is a 409 conflict, never a silent
+          duplicate).
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivationCreateInput'
+            examples:
+              valid:
+                $ref: '#/components/examples/ActivationCreateInput'
+      responses:
+        '200':
+          description: |
+            Activation receipt (fresh create or duplicate collapse). The
+            response body IS the receipt, signed over its exact raw bytes via
+            the three `x-patches-*` receipt headers.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            x-patches-receipt-id:
+              $ref: '#/components/headers/XPatchesReceiptId'
+            x-patches-content-sha256:
+              $ref: '#/components/headers/XPatchesContentSha256'
+            x-patches-signature:
+              $ref: '#/components/headers/XPatchesSignature'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationReceipt'
+              examples:
+                fresh:
+                  $ref: '#/components/examples/ReceiptFresh'
+                duplicate:
+                  $ref: '#/components/examples/ReceiptDuplicate'
+        '400':
+          description: |
+            Unprocessable request body. Two shapes: `ACTIVATION_INPUT_MISSING`
+            (`{ error, fields }` — one or more of orgId, capability, bindingId,
+            idempotencyKey missing or not strings) and `MALFORMED_PAYLOAD`
+            (body is not a JSON object). A defensive `INVALID_BODY`
+            (`{ error, errorClass: 'INPUT', requestId }`) covers unexpected
+            body-read failures.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ActivationInputMissingError'
+                  - $ref: '#/components/schemas/MalformedPayloadError'
+              examples:
+                inputMissing:
+                  $ref: '#/components/examples/ActivationInputMissing'
+                malformed:
+                  $ref: '#/components/examples/MalformedPayload'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '403':
+          description: |
+            Policy pipeline denial (organization, entitlement, capability, or
+            binding). POST-route business errors carry `{ error, errorClass }`
+            WITHOUT `requestId` in the body.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationPolicyError'
+              examples:
+                entitlementMissing:
+                  $ref: '#/components/examples/PolicyEntitlementMissing'
+                bindingInactive:
+                  $ref: '#/components/examples/PolicyBindingInactive'
+        '409':
+          description: |
+            Two families: idempotency conflict (same key, different request
+            hash — body WITHOUT `requestId`) and nonce replay (body WITH
+            `requestId` and replay context).
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/IdempotencyConflictError'
+                  - $ref: '#/components/schemas/AuthError'
+              examples:
+                idempotencyConflict:
+                  $ref: '#/components/examples/IdempotencyConflict'
+                replayed:
+                  $ref: '#/components/examples/AuthNonceReplayed'
+        '413':
+          description: 'Request body exceeds 262144 bytes (256 KiB) — `PAYLOAD_TOO_LARGE` with `limitBytes`.'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayloadTooLargeError'
+              examples:
+                tooLarge:
+                  $ref: '#/components/examples/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '500':
+          description: |
+            Persistence failure — the single activation transaction failed;
+            no partial state exists and the nonce is NOT registered (the same
+            signed request may be retried). Body WITHOUT `requestId`.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersistenceFailedError'
+              examples:
+                persistenceFailed:
+                  $ref: '#/components/examples/PersistenceFailed'
+        '503':
+          description: |
+            Two families: downstream protection failure (`DOWNSTREAM_UNAVAILABLE`
+            — fail-closed: NOTHING is persisted, no receipt, no event) and the
+            kill switch (`PARTNER_API_DISABLED`, single-key body, emitted
+            before request-id assignment so it carries no `x-request-id`
+            header).
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DownstreamUnavailableError'
+                  - $ref: '#/components/schemas/PartnerApiDisabledError'
+              examples:
+                downstream:
+                  $ref: '#/components/examples/DownstreamUnavailable'
+                apiDisabled:
+                  $ref: '#/components/examples/ApiDisabled'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+  /api/partner/v1/activations/{activationId}:
+    get:
+      operationId: getActivationStatus
+      tags: [Activations]
+      summary: Get the current activation status.
+      description: |
+        Current state of one activation. The activation must exist (else 404
+        `ACTIVATION_UNKNOWN`) and belong to an organization owned by the
+        authenticated partner (else 403 with the org authorization code).
+        GET-route errors carry `requestId` in the body.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+        - $ref: '#/components/parameters/ActivationIdPath'
+      responses:
+        '200':
+          description: Current activation state.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationStatusResponse'
+              examples:
+                status:
+                  $ref: '#/components/examples/ActivationStatus'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '403':
+          description: |
+            Organization authorization failed (tenant boundary). GET-route
+            policy errors carry `requestId` in the body.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgAuthorizationError'
+              examples:
+                orgNotBound:
+                  $ref: '#/components/examples/PolicyOrgNotBoundGet'
+        '404':
+          description: 'Unknown activation — `ACTIVATION_UNKNOWN` (GET route: body carries `requestId`).'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationUnknownGetError'
+              examples:
+                unknown:
+                  $ref: '#/components/examples/ActivationUnknownGet'
+        '409':
+          $ref: '#/components/responses/NonceReplayed409'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '503':
+          $ref: '#/components/responses/ApiDisabled503'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+  /api/partner/v1/activations/{activationId}/deactivate:
+    post:
+      operationId: deactivateActivation
+      tags: [Activations]
+      summary: Deactivate an activation (idempotent by status).
+      description: |
+        Deactivate. A JSON object body is REQUIRED (an empty or non-JSON body
+        is 400 `MALFORMED_PAYLOAD`) but its content is ignored — the activation
+        is identified by the path parameter.
+
+        Lifecycle: deactivating an ACTIVE activation persists `DEACTIVATED`
+        (event `activation.deactivated`); a second deactivate is a no-op 200
+        success receipt; deactivating a REVOKED activation is 409
+        `ACTIVATION_REVOKED` (REVOKED is terminal).
+
+        Pipeline: activation exists → organization authorization →
+        entitlement (status + license window) → status transition. POST-route
+        business errors carry `{ error, errorClass }` WITHOUT `requestId` in
+        the body; handler-level errors (auth, malformed body, rate limit)
+        carry `requestId`.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+        - $ref: '#/components/parameters/ActivationIdPath'
+      requestBody:
+        description: |
+          A JSON object body is required on this route but its content is
+          ignored (the activation is identified by the path parameter).
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StateChangeInput'
+            examples:
+              empty:
+                $ref: '#/components/examples/StateChangeInput'
+      responses:
+        '200':
+          description: |
+            Deactivation receipt (fresh transition or no-op on an already
+            DEACTIVATED activation — `result` shows the persisted state).
+            Signed over its exact raw bytes via the `x-patches-*` receipt
+            headers.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            x-patches-receipt-id:
+              $ref: '#/components/headers/XPatchesReceiptId'
+            x-patches-content-sha256:
+              $ref: '#/components/headers/XPatchesContentSha256'
+            x-patches-signature:
+              $ref: '#/components/headers/XPatchesSignature'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateChangeReceipt'
+              examples:
+                deactivated:
+                  $ref: '#/components/examples/ReceiptDeactivate'
+        '400':
+          description: |
+            Body is not a JSON object — `MALFORMED_PAYLOAD` (a JSON object
+            body is required even though its content is ignored). A defensive
+            `INVALID_BODY` (`{ error, errorClass: 'INPUT', requestId }`)
+            covers unexpected body-read failures.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MalformedPayloadError'
+              examples:
+                malformed:
+                  $ref: '#/components/examples/MalformedPayload'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '403':
+          description: |
+            Policy denial (organization authorization or entitlement lapse on
+            the activation's org/capability). POST-route business errors carry
+            `{ error, errorClass }` WITHOUT `requestId` in the body.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateChangePolicyError'
+              examples:
+                entitlementLapsed:
+                  $ref: '#/components/examples/PolicyEntitlementMissing'
+        '404':
+          description: 'Unknown activation — `ACTIVATION_UNKNOWN` (POST route: body WITHOUT `requestId`).'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationUnknownPostError'
+              examples:
+                unknown:
+                  $ref: '#/components/examples/ActivationUnknownPost'
+        '409':
+          description: |
+            Two families: terminal-state conflict (`ACTIVATION_REVOKED` —
+            deactivating a REVOKED activation; body WITHOUT `requestId`) and
+            nonce replay (body WITH `requestId` and replay context).
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ActivationRevokedError'
+                  - $ref: '#/components/schemas/AuthError'
+              examples:
+                alreadyRevoked:
+                  $ref: '#/components/examples/ActivationRevoked'
+                replayed:
+                  $ref: '#/components/examples/AuthNonceReplayed'
+        '413':
+          description: 'Request body exceeds 262144 bytes (256 KiB) — `PAYLOAD_TOO_LARGE` with `limitBytes`.'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayloadTooLargeError'
+              examples:
+                tooLarge:
+                  $ref: '#/components/examples/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '500':
+          description: |
+            Persistence failure — the state-change transaction failed; no
+            partial state exists and the nonce is NOT registered. Body WITHOUT
+            `requestId`.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersistenceFailedError'
+              examples:
+                persistenceFailed:
+                  $ref: '#/components/examples/PersistenceFailed'
+        '503':
+          $ref: '#/components/responses/ApiDisabled503'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+  /api/partner/v1/activations/{activationId}/revoke:
+    post:
+      operationId: revokeActivation
+      tags: [Activations]
+      summary: Revoke an activation (terminal, idempotent by status).
+      description: |
+        Revoke. A JSON object body is REQUIRED (an empty or non-JSON body is
+        400 `MALFORMED_PAYLOAD`) but its content is ignored — the activation
+        is identified by the path parameter.
+
+        Lifecycle: revoking an ACTIVE or DEACTIVATED activation persists
+        `REVOKED` (event `activation.revoked`); revoking an already-REVOKED
+        activation is a no-op 200 success receipt. REVOKED is terminal — there
+        is no reactivation.
+
+        Pipeline: activation exists → organization authorization →
+        entitlement (status + license window) → status transition. POST-route
+        business errors carry `{ error, errorClass }` WITHOUT `requestId` in
+        the body; handler-level errors (auth, malformed body, rate limit)
+        carry `requestId`.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+        - $ref: '#/components/parameters/ActivationIdPath'
+      requestBody:
+        description: |
+          A JSON object body is required on this route but its content is
+          ignored (the activation is identified by the path parameter).
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StateChangeInput'
+            examples:
+              empty:
+                $ref: '#/components/examples/StateChangeInput'
+      responses:
+        '200':
+          description: |
+            Revocation receipt (fresh transition or no-op on an already-REVOKED
+            activation — `result` shows the persisted state). Signed over its
+            exact raw bytes via the `x-patches-*` receipt headers.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            x-patches-receipt-id:
+              $ref: '#/components/headers/XPatchesReceiptId'
+            x-patches-content-sha256:
+              $ref: '#/components/headers/XPatchesContentSha256'
+            x-patches-signature:
+              $ref: '#/components/headers/XPatchesSignature'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateChangeReceipt'
+              examples:
+                revoked:
+                  $ref: '#/components/examples/ReceiptRevoke'
+        '400':
+          description: |
+            Body is not a JSON object — `MALFORMED_PAYLOAD` (a JSON object
+            body is required even though its content is ignored). A defensive
+            `INVALID_BODY` (`{ error, errorClass: 'INPUT', requestId }`)
+            covers unexpected body-read failures.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MalformedPayloadError'
+              examples:
+                malformed:
+                  $ref: '#/components/examples/MalformedPayload'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '403':
+          description: |
+            Policy denial (organization authorization or entitlement lapse on
+            the activation's org/capability). POST-route business errors carry
+            `{ error, errorClass }` WITHOUT `requestId` in the body.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateChangePolicyError'
+              examples:
+                entitlementLapsed:
+                  $ref: '#/components/examples/PolicyEntitlementMissing'
+        '404':
+          description: 'Unknown activation — `ACTIVATION_UNKNOWN` (POST route: body WITHOUT `requestId`).'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationUnknownPostError'
+              examples:
+                unknown:
+                  $ref: '#/components/examples/ActivationUnknownPost'
+        '409':
+          $ref: '#/components/responses/NonceReplayed409'
+        '413':
+          description: 'Request body exceeds 262144 bytes (256 KiB) — `PAYLOAD_TOO_LARGE` with `limitBytes`.'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayloadTooLargeError'
+              examples:
+                tooLarge:
+                  $ref: '#/components/examples/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '500':
+          description: |
+            Persistence failure — the state-change transaction failed; no
+            partial state exists and the nonce is NOT registered. Body WITHOUT
+            `requestId`.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersistenceFailedError'
+              examples:
+                persistenceFailed:
+                  $ref: '#/components/examples/PersistenceFailed'
+        '503':
+          $ref: '#/components/responses/ApiDisabled503'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+  /api/partner/v1/events:
+    get:
+      operationId: listEvents
+      tags: [Events and Audit]
+      summary: List activation events for one organization (tenant-scoped).
+      description: |
+        Activation lifecycle events for a single organization (append-only
+        event stream). The authenticated partner must own the organization.
+        A missing `orgId` query parameter is 400 `ORG_ID_REQUIRED`.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+        - $ref: '#/components/parameters/OrgIdQuery'
+      responses:
+        '200':
+          description: Activation events for the requested organization.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventList'
+              examples:
+                events:
+                  $ref: '#/components/examples/EventList'
+        '400':
+          description: 'Missing required query parameter — `ORG_ID_REQUIRED`.'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgIdRequiredError'
+              examples:
+                orgIdRequired:
+                  $ref: '#/components/examples/OrgIdRequired'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '403':
+          description: |
+            Organization authorization failed (tenant boundary). GET-route
+            policy errors carry `requestId` in the body.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgAuthorizationError'
+              examples:
+                orgNotBound:
+                  $ref: '#/components/examples/PolicyOrgNotBoundGet'
+        '409':
+          $ref: '#/components/responses/NonceReplayed409'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '503':
+          $ref: '#/components/responses/ApiDisabled503'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+  /api/partner/v1/audit:
+    get:
+      operationId: listAuditEvents
+      tags: [Events and Audit]
+      summary: List the scrubbed audit trail for one organization (tenant-scoped).
+      description: |
+        Audit trail rows for the organization's OWNING partner — a partner
+        only ever sees audit events for its own organizations. Rows are
+        scrubbed: only the allowlisted view fields are exposed (no detail
+        payloads, no subject/device references). A missing `orgId` query
+        parameter is 400 `ORG_ID_REQUIRED`.
+      parameters:
+        - $ref: '#/components/parameters/XPATCHESTimestamp'
+        - $ref: '#/components/parameters/XPATCHESNonce'
+        - $ref: '#/components/parameters/XPATCHESSignature'
+        - $ref: '#/components/parameters/OrgIdQuery'
+      responses:
+        '200':
+          description: Scrubbed audit rows for the requested organization.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditList'
+              examples:
+                audit:
+                  $ref: '#/components/examples/AuditList'
+        '400':
+          description: 'Missing required query parameter — `ORG_ID_REQUIRED`.'
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgIdRequiredError'
+              examples:
+                orgIdRequired:
+                  $ref: '#/components/examples/OrgIdRequired'
+        '401':
+          $ref: '#/components/responses/AuthFailure401'
+        '403':
+          description: |
+            Organization authorization failed (tenant boundary). GET-route
+            policy errors carry `requestId` in the body.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/XRequestId'
+            x-api-version:
+              $ref: '#/components/headers/XApiVersion'
+            cache-control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgAuthorizationError'
+              examples:
+                orgNotBound:
+                  $ref: '#/components/examples/PolicyOrgNotBoundGet'
+        '409':
+          $ref: '#/components/responses/NonceReplayed409'
+        '429':
+          $ref: '#/components/responses/RateLimited429'
+        '503':
+          $ref: '#/components/responses/ApiDisabled503'
+        default:
+          $ref: '#/components/responses/RouteNotFound404'
+
+components:
+  securitySchemes:
+    PatchesSignedRequest:
+      type: apiKey
+      description: |
+        Scoped partner authentication + request integrity. Every authenticated
+        request carries four headers:
+
+          `Authorization: PATCHES-Partner <clientId>:<keyId>`
+          `X-PATCHES-Timestamp: <epoch milliseconds>`
+          `X-PATCHES-Nonce: <opaque nonce, [A-Za-z0-9_-]{20,128}>`
+          `X-PATCHES-Signature: <lowercase-hex HMAC-SHA256>`
+
+        The signature is HMAC-SHA256 over the 5-field canonical string:
+
+          `${METHOD}\n${path}\n${timestamp}\n${nonce}\n${bodyHash}`
+
+        where `METHOD` is uppercase, `path` is the FULL request pathname
+        INCLUDING the `/api/partner/v1` prefix (the query string is NOT
+        signed), `timestamp` and `nonce` are the EXACT header values, and
+        `bodyHash` is the lowercase-hex sha256 of the RAW request body bytes
+        (a bodyless request hashes the empty string, keeping the signature
+        bound to the method).
+
+        Verification is cumulative: signature verification is the first gate
+        only and never replaces — and is never replaced by — the per-operation
+        tenant scoping (organization ownership), entitlement, capability, and
+        device/subject binding checks. Credential states: ACTIVE and GRACE
+        validate; RETIRED and REVOKED fail closed; a GRACE credential expires
+        at its retirement instant.
+      name: authorization
+      in: header
+
+  parameters:
+    XPATCHESTimestamp:
+      name: x-patches-timestamp
+      in: header
+      required: true
+      description: 'Epoch milliseconds; must be within 300000 ms (±5 minutes) of server time. Part of the signed canonical string.'
+      schema:
+        type: string
+        pattern: '^\d{1,16}$'
+    XPATCHESNonce:
+      name: x-patches-nonce
+      in: header
+      required: true
+      description: 'Caller-generated opaque nonce; single-use within a 600000 ms (10 minutes) validity window. Part of the signed canonical string.'
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{20,128}$'
+    XPATCHESSignature:
+      name: x-patches-signature
+      in: header
+      required: true
+      description: 'Lowercase-hex HMAC-SHA256 over the 5-field canonical string (see the PatchesSignedRequest scheme).'
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+    OrgIdQuery:
+      name: orgId
+      in: query
+      required: true
+      description: Organization id (tenant scope) — must be owned by the authenticated partner.
+      schema:
+        type: string
+    ActivationIdPath:
+      name: activationId
+      in: path
+      required: true
+      description: 'Opaque activation id (`ACT-<requestId>`).'
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{1,128}$'
+
+  headers:
+    XRequestId:
+      description: 'Correlation id — echoes the caller''s `x-request-id` header when present, else `req-<uuid>`.'
+      schema:
+        type: string
+      examples:
+        generated:
+          value: req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+    XApiVersion:
+      description: 'API version of this deployment — always `v1`.'
+      schema:
+        type: string
+        const: v1
+    CacheControlNoStore:
+      description: Responses are never cached.
+      schema:
+        type: string
+        const: no-store
+    RetryAfter:
+      description: Seconds until the rate-limit bucket refills (minimum 1).
+      schema:
+        type: string
+        pattern: '^\d+$'
+      examples:
+        oneSecond:
+          value: '1'
+    XPatchesReceiptId:
+      description: 'Receipt id — names the SAME receipt as the body''s `receiptId` field.'
+      schema:
+        type: string
+      examples:
+        created:
+          value: RCP-ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+    XPatchesContentSha256:
+      description: Lowercase-hex sha256 of the RAW response bytes.
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+      examples:
+        digest:
+          value: a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90
+    XPatchesSignature:
+      description: Lowercase-hex HMAC-SHA256 over the RAW response bytes (receipt secret).
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+      examples:
+        signature:
+          value: b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1
+
+  responses:
+    AuthFailure401:
+      description: |
+        Authentication failed (401 family). Body is
+        `{ error, errorClass: 'AUTHENTICATION', requestId }` plus only safe
+        context keys (clientId, keyId, nonce, firstSeenAt,
+        firstSeenRequestId, graceUntil, skewMs) — never secrets.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/XRequestId'
+        x-api-version:
+          $ref: '#/components/headers/XApiVersion'
+        cache-control:
+          $ref: '#/components/headers/CacheControlNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthError'
+          examples:
+            missing:
+              $ref: '#/components/examples/AuthMissing'
+            badSignature:
+              $ref: '#/components/examples/AuthSignatureInvalid'
+            expiredCredential:
+              $ref: '#/components/examples/AuthCredentialExpired'
+            suspendedPartner:
+              $ref: '#/components/examples/AuthPartnerSuspended'
+    NonceReplayed409:
+      description: |
+        Replay protection — the nonce was already used within its 600000 ms
+        validity window (409 family; carries replay context).
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/XRequestId'
+        x-api-version:
+          $ref: '#/components/headers/XApiVersion'
+        cache-control:
+          $ref: '#/components/headers/CacheControlNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthError'
+          examples:
+            replayed:
+              $ref: '#/components/examples/AuthNonceReplayed'
+    RateLimited429:
+      description: |
+        Per-clientId token bucket exhausted (capacity 30, refill 10 per
+        second). Rate limiting is checked AFTER authentication — only
+        authenticated partners consume quota.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/XRequestId'
+        x-api-version:
+          $ref: '#/components/headers/XApiVersion'
+        cache-control:
+          $ref: '#/components/headers/CacheControlNoStore'
+        retry-after:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RateLimitError'
+          examples:
+            rateLimited:
+              $ref: '#/components/examples/RateLimited'
+    ApiDisabled503:
+      description: |
+        Kill switch — `PATCHES_PARTNER_API_DISABLED` is active. Single-key
+        body, emitted before request-id assignment: no `x-request-id` header
+        on this response.
+      headers:
+        x-api-version:
+          $ref: '#/components/headers/XApiVersion'
+        cache-control:
+          $ref: '#/components/headers/CacheControlNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PartnerApiDisabledError'
+          examples:
+            apiDisabled:
+              $ref: '#/components/examples/ApiDisabled'
+    RouteNotFound404:
+      description: 'Unmatched route or method — 404 `NOT_FOUND` (there is no 405 in this API).'
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/XRequestId'
+        x-api-version:
+          $ref: '#/components/headers/XApiVersion'
+        cache-control:
+          $ref: '#/components/headers/CacheControlNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotFoundError'
+          examples:
+            notFound:
+              $ref: '#/components/examples/RouteNotFound'
+
+  schemas:
+    HealthAvailable:
+      type: object
+      description: Live readiness payload (computed fresh; never cached).
+      required: [service, version, status, directDatabaseAccess, requiresScopedAuthentication, capabilities, supportedApiVersions, at]
+      properties:
+        service:
+          type: string
+          const: PATCHES Partner API
+        version:
+          type: string
+          const: v1
+        status:
+          type: string
+          const: available
+        directDatabaseAccess:
+          type: boolean
+          const: false
+          description: The partner API never exposes direct database access.
+        requiresScopedAuthentication:
+          type: boolean
+          const: true
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Registered capability identifiers (live from the directory).
+        supportedApiVersions:
+          type: array
+          items:
+            type: string
+        at:
+          type: integer
+          description: Epoch milliseconds (server clock).
+    HealthDisabled:
+      type: object
+      description: 'Kill-switch live disabled payload — computed fresh; omits capabilities/supportedApiVersions.'
+      required: [service, version, status, directDatabaseAccess, requiresScopedAuthentication, at]
+      properties:
+        service:
+          type: string
+          const: PATCHES Partner API
+        version:
+          type: string
+          const: v1
+        status:
+          type: string
+          const: disabled
+        directDatabaseAccess:
+          type: boolean
+          const: false
+        requiresScopedAuthentication:
+          type: boolean
+          const: true
+        at:
+          type: integer
+          description: Epoch milliseconds (server clock).
+    CapabilityView:
+      type: object
+      required: [capability, minApiVersion, maxApiVersion, description]
+      properties:
+        capability:
+          type: string
+          description: Generic contract identifier (e.g. traffic_stop_privacy).
+        minApiVersion:
+          type: string
+        maxApiVersion:
+          type: string
+        description:
+          type: string
+    CapabilityList:
+      type: object
+      required: [requestId, capabilities]
+      properties:
+        requestId:
+          type: string
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityView'
+    EntitlementView:
+      type: object
+      required: [entitlementId, capability, status, licensedFrom, licensedUntil]
+      properties:
+        entitlementId:
+          type: string
+        capability:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+        licensedFrom:
+          type: integer
+          description: Epoch milliseconds — license window start.
+        licensedUntil:
+          type: integer
+          description: Epoch milliseconds — license window end.
+    EntitlementList:
+      type: object
+      required: [requestId, orgId, entitlements]
+      properties:
+        requestId:
+          type: string
+        orgId:
+          type: string
+        entitlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntitlementView'
+    ActivationView:
+      type: object
+      description: Current activation state (also the `result` embedded in receipts).
+      required: [activationId, orgId, capability, bindingId, status, activatedAt, deactivatedAt, revokedAt]
+      properties:
+        activationId:
+          type: string
+        orgId:
+          type: string
+        capability:
+          type: string
+        bindingId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, DEACTIVATED, REVOKED]
+        activatedAt:
+          type: integer
+          description: Epoch milliseconds.
+        deactivatedAt:
+          type: [integer, 'null']
+          description: Epoch milliseconds, or null while active.
+        revokedAt:
+          type: [integer, 'null']
+          description: Epoch milliseconds, or null until revoked.
+    ActivationStatusResponse:
+      type: object
+      required: [requestId, activation]
+      properties:
+        requestId:
+          type: string
+        activation:
+          $ref: '#/components/schemas/ActivationView'
+    ActivationCreateInput:
+      type: object
+      description: |
+        Activation create input. All four fields are required strings.
+        Additional fields are permitted and participate in the request hash
+        (idempotency identity).
+      required: [orgId, capability, bindingId, idempotencyKey]
+      additionalProperties: true
+      properties:
+        orgId:
+          type: string
+          description: Owning organization id (tenant scope).
+        capability:
+          type: string
+          description: Registered capability identifier.
+        bindingId:
+          type: string
+          description: Opaque device/subject binding id.
+        idempotencyKey:
+          type: string
+          description: Caller-chosen idempotency identity (unique per clientId).
+    StateChangeInput:
+      type: object
+      description: |
+        Deactivate/revoke request body. A JSON object body is required (an
+        empty or non-JSON body is rejected), but its content is ignored — the
+        activation is identified by the path parameter.
+      additionalProperties: true
+    ActivationReceipt:
+      type: object
+      description: |
+        200 receipt for `POST /activations` — fresh create or duplicate
+        collapse. The response body IS the receipt, signed over its exact raw
+        bytes via the three `x-patches-*` receipt headers.
+      required: [schemaVersion, receiptId, requestId, clientId, operation, outcome, at, activationId, orgId, capability, payloadHash, result]
+      properties:
+        schemaVersion:
+          type: string
+          const: patches-partner-v1
+        receiptId:
+          type: string
+          description: '`RCP-ACT-<requestId>` (fresh) or `RCP-DUP-<requestId>` (duplicate).'
+        requestId:
+          type: string
+        clientId:
+          type: string
+        operation:
+          type: string
+          const: activation.create
+        outcome:
+          type: string
+          const: SUCCESS
+        at:
+          type: integer
+          description: Epoch milliseconds.
+        activationId:
+          type: string
+          description: '`ACT-<requestId>`; on duplicates, the ORIGINAL activation.'
+        orgId:
+          type: string
+        capability:
+          type: string
+        payloadHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: sha256 of the serialized request object (idempotency identity).
+        result:
+          $ref: '#/components/schemas/ActivationView'
+        duplicate:
+          type: boolean
+          const: true
+          description: Present only on duplicate-collapse receipts.
+    StateChangeReceipt:
+      type: object
+      description: |
+        200 receipt for deactivate/revoke — fresh transition or idempotent
+        no-op. The response body IS the receipt, signed over its exact raw
+        bytes via the three `x-patches-*` receipt headers.
+      required: [schemaVersion, receiptId, requestId, clientId, operation, outcome, at, activationId, orgId, capability, result]
+      properties:
+        schemaVersion:
+          type: string
+          const: patches-partner-v1
+        receiptId:
+          type: string
+          description: '`RCP-DEACTIVATE-<requestId>` or `RCP-REVOKE-<requestId>`.'
+        requestId:
+          type: string
+        clientId:
+          type: string
+        operation:
+          type: string
+          enum: [activation.deactivate, activation.revoke]
+        outcome:
+          type: string
+          const: SUCCESS
+        at:
+          type: integer
+          description: Epoch milliseconds.
+        activationId:
+          type: string
+        orgId:
+          type: string
+        capability:
+          type: string
+        result:
+          $ref: '#/components/schemas/ActivationView'
+    EventView:
+      type: object
+      required: [eventId, capability, activationId, type, at]
+      properties:
+        eventId:
+          type: string
+          description: '`EVT-<requestId>`.'
+        capability:
+          type: string
+        activationId:
+          type: string
+        type:
+          type: string
+          enum: [activation.created, activation.deactivated, activation.revoked]
+        at:
+          type: integer
+          description: Epoch milliseconds.
+    EventList:
+      type: object
+      required: [requestId, orgId, events]
+      properties:
+        requestId:
+          type: string
+        orgId:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventView'
+    AuditView:
+      type: object
+      description: Scrubbed audit row — only allowlisted view fields; no detail payloads.
+      required: [sequence, at, actorKind, clientId, requestId, operation, outcome]
+      properties:
+        sequence:
+          type: integer
+          description: Strictly increasing append-only ordering.
+        at:
+          type: integer
+          description: Epoch milliseconds.
+        actorKind:
+          type: string
+          enum: [PARTNER, SYSTEM]
+        clientId:
+          type: string
+        requestId:
+          type: string
+        operation:
+          type: string
+          enum: [activation.create, activation.status, activation.deactivate, activation.revoke, capabilities.list, entitlements.list, events.list, audit.list]
+        outcome:
+          type: string
+          enum: [SUCCESS, REJECTED, FAILED, QUARANTINED, CONFLICT]
+    AuditList:
+      type: object
+      required: [requestId, orgId, audit]
+      properties:
+        requestId:
+          type: string
+        orgId:
+          type: string
+        audit:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditView'
+    AuthError:
+      type: object
+      description: |
+        Authentication failure (401 or 409). Only safe context keys are
+        surfaced — never secrets.
+      required: [error, errorClass, requestId]
+      properties:
+        error:
+          type: string
+          enum: [AUTH_MISSING, AUTH_MALFORMED, PARTNER_UNKNOWN, PARTNER_SUSPENDED, CREDENTIAL_UNKNOWN, CREDENTIAL_REVOKED, CREDENTIAL_EXPIRED, TIMESTAMP_OUT_OF_WINDOW, NONCE_INVALID, NONCE_REPLAYED, SIGNATURE_INVALID, SECRET_UNAVAILABLE]
+        errorClass:
+          type: string
+          const: AUTHENTICATION
+        clientId:
+          type: string
+          description: Present on PARTNER_SUSPENDED.
+        keyId:
+          type: string
+          description: Present on credential-family failures.
+        nonce:
+          type: string
+          description: Present on NONCE_REPLAYED.
+        firstSeenAt:
+          type: integer
+          description: Epoch milliseconds — present on NONCE_REPLAYED.
+        firstSeenRequestId:
+          type: string
+          description: Present on NONCE_REPLAYED.
+        graceUntil:
+          type: integer
+          description: Epoch milliseconds — retirement instant of a GRACE credential.
+        skewMs:
+          type: integer
+          description: Absolute clock skew — present on TIMESTAMP_OUT_OF_WINDOW.
+        requestId:
+          type: string
+    OrgIdRequiredError:
+      type: object
+      required: [error, errorClass, requestId]
+      properties:
+        error:
+          type: string
+          const: ORG_ID_REQUIRED
+        errorClass:
+          type: string
+          const: INPUT
+        requestId:
+          type: string
+    MalformedPayloadError:
+      type: object
+      required: [error, errorClass, requestId]
+      properties:
+        error:
+          type: string
+          const: MALFORMED_PAYLOAD
+        errorClass:
+          type: string
+          const: INPUT
+        requestId:
+          type: string
+    ActivationInputMissingError:
+      type: object
+      description: 'Missing/non-string activation fields — carries `{ error, fields }` (no `errorClass`).'
+      required: [error, fields]
+      properties:
+        error:
+          type: string
+          const: ACTIVATION_INPUT_MISSING
+        fields:
+          type: array
+          items:
+            type: string
+            enum: [orgId, capability, bindingId, idempotencyKey]
+          description: The missing (or non-string) fields.
+    PayloadTooLargeError:
+      type: object
+      required: [error, errorClass, limitBytes, requestId]
+      properties:
+        error:
+          type: string
+          const: PAYLOAD_TOO_LARGE
+        errorClass:
+          type: string
+          const: INPUT
+        limitBytes:
+          type: integer
+          const: 262144
+        requestId:
+          type: string
+    OrgAuthorizationError:
+      type: object
+      description: |
+        Organization authorization failure on a GET route (tenant boundary) —
+        carries `requestId` in the body.
+      required: [error, errorClass, requestId]
+      properties:
+        error:
+          type: string
+          enum: [ORG_UNKNOWN, ORG_SUSPENDED, ORG_NOT_BOUND_TO_PARTNER]
+        errorClass:
+          type: string
+          const: AUTHORIZATION
+        requestId:
+          type: string
+    ActivationPolicyError:
+      type: object
+      description: |
+        Policy pipeline denial on `POST /activations` (organization,
+        entitlement, capability, or binding) — body WITHOUT `requestId` (the
+        `x-request-id` header carries it).
+      required: [error, errorClass]
+      properties:
+        error:
+          type: string
+          enum: [ORG_UNKNOWN, ORG_SUSPENDED, ORG_NOT_BOUND_TO_PARTNER, ENTITLEMENT_MISSING, ENTITLEMENT_INACTIVE, ENTITLEMENT_REVOKED, ENTITLEMENT_EXPIRED, CAPABILITY_UNKNOWN, CAPABILITY_VERSION_UNSUPPORTED, BINDING_UNKNOWN, BINDING_INACTIVE, BINDING_ORG_MISMATCH, BINDING_CAPABILITY_MISMATCH]
+        errorClass:
+          type: string
+          const: AUTHORIZATION
+    StateChangePolicyError:
+      type: object
+      description: |
+        Policy denial on deactivate/revoke (organization authorization or
+        entitlement lapse on the activation's org/capability — the capability
+        and binding checks are create-time only) — body WITHOUT `requestId`.
+      required: [error, errorClass]
+      properties:
+        error:
+          type: string
+          enum: [ORG_UNKNOWN, ORG_SUSPENDED, ORG_NOT_BOUND_TO_PARTNER, ENTITLEMENT_MISSING, ENTITLEMENT_INACTIVE, ENTITLEMENT_REVOKED, ENTITLEMENT_EXPIRED]
+        errorClass:
+          type: string
+          const: AUTHORIZATION
+    IdempotencyConflictError:
+      type: object
+      description: 'Same idempotency key, different request hash — body WITHOUT `requestId`.'
+      required: [error, errorClass, existingActivationId]
+      properties:
+        error:
+          type: string
+          const: IDEMPOTENCY_KEY_CONFLICT
+        errorClass:
+          type: string
+          const: IDEMPOTENCY
+        existingActivationId:
+          type: [string, 'null']
+          description: The activation created by the original request, or null.
+    ActivationRevokedError:
+      type: object
+      description: 'Deactivating a REVOKED activation (terminal state) — body WITHOUT `requestId`.'
+      required: [error, errorClass]
+      properties:
+        error:
+          type: string
+          const: ACTIVATION_REVOKED
+        errorClass:
+          type: string
+          const: STATE
+    ActivationUnknownGetError:
+      type: object
+      description: Unknown activation on the GET status route — carries `requestId` in the body.
+      required: [error, errorClass, requestId]
+      properties:
+        error:
+          type: string
+          const: ACTIVATION_UNKNOWN
+        errorClass:
+          type: string
+          const: NOT_FOUND
+        requestId:
+          type: string
+    ActivationUnknownPostError:
+      type: object
+      description: 'Unknown activation on POST routes — body WITHOUT `requestId` (the `x-request-id` header carries it).'
+      required: [error, errorClass]
+      properties:
+        error:
+          type: string
+          const: ACTIVATION_UNKNOWN
+        errorClass:
+          type: string
+          const: NOT_FOUND
+    RateLimitError:
+      type: object
+      required: [error, errorClass, retryAfterMs, requestId]
+      properties:
+        error:
+          type: string
+          const: RATE_LIMITED
+        errorClass:
+          type: string
+          const: RATE_LIMIT
+        retryAfterMs:
+          type: integer
+          description: Milliseconds until the bucket refills (the `retry-after` header carries the same value in seconds, minimum 1).
+        requestId:
+          type: string
+    DownstreamUnavailableError:
+      type: object
+      description: 'Downstream protection failure — fail-closed (nothing persisted) — body WITHOUT `requestId`.'
+      required: [error, errorClass]
+      properties:
+        error:
+          type: string
+          const: DOWNSTREAM_UNAVAILABLE
+        errorClass:
+          type: string
+          const: DOWNSTREAM
+    PersistenceFailedError:
+      type: object
+      description: |
+        Persistence failure — the single transaction failed; no partial state
+        and the nonce is NOT registered — body WITHOUT `requestId`.
+      required: [error, errorClass]
+      properties:
+        error:
+          type: string
+          const: PARTNER_PERSISTENCE_FAILED
+        errorClass:
+          type: string
+          const: PERSISTENCE
+    PartnerApiDisabledError:
+      type: object
+      description: 'Kill switch — single-key body, no `x-request-id` header on this response.'
+      required: [error]
+      properties:
+        error:
+          type: string
+          const: PARTNER_API_DISABLED
+    NotFoundError:
+      type: object
+      description: 'Unmatched route or method (there is no 405 in this API).'
+      required: [error, requestId]
+      properties:
+        error:
+          type: string
+          const: NOT_FOUND
+        requestId:
+          type: string
+
+  examples:
+    HealthAvailable:
+      value:
+        service: PATCHES Partner API
+        version: v1
+        status: available
+        directDatabaseAccess: false
+        requiresScopedAuthentication: true
+        capabilities: [home_privacy, traffic_stop_privacy]
+        supportedApiVersions: [v1]
+        at: 1768478400000
+    HealthDisabled:
+      value:
+        service: PATCHES Partner API
+        version: v1
+        status: disabled
+        directDatabaseAccess: false
+        requiresScopedAuthentication: true
+        at: 1768478400000
+    CapabilityList:
+      value:
+        requestId: req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        capabilities:
+          - capability: home_privacy
+            minApiVersion: v1
+            maxApiVersion: v1
+            description: 'Home privacy capability (generic contract)'
+          - capability: traffic_stop_privacy
+            minApiVersion: v1
+            maxApiVersion: v1
+            description: 'Traffic-stop privacy capability (generic contract)'
+    EntitlementList:
+      value:
+        requestId: req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        orgId: ORG-ARMA-ALPHA
+        entitlements:
+          - entitlementId: ENT-001
+            capability: traffic_stop_privacy
+            status: ACTIVE
+            licensedFrom: 1768392000000
+            licensedUntil: 1800038400000
+    ActivationCreateInput:
+      value:
+        orgId: ORG-ARMA-ALPHA
+        capability: traffic_stop_privacy
+        bindingId: BIND-ALPHA-TSP
+        idempotencyKey: idem-key-001
+    StateChangeInput:
+      value: {}
+    ReceiptFresh:
+      value:
+        schemaVersion: patches-partner-v1
+        receiptId: RCP-ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        requestId: req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        clientId: arma-client
+        operation: activation.create
+        outcome: SUCCESS
+        at: 1768478400000
+        activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        orgId: ORG-ARMA-ALPHA
+        capability: traffic_stop_privacy
+        payloadHash: a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90
+        result:
+          activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+          orgId: ORG-ARMA-ALPHA
+          capability: traffic_stop_privacy
+          bindingId: BIND-ALPHA-TSP
+          status: ACTIVE
+          activatedAt: 1768478400000
+          deactivatedAt: null
+          revokedAt: null
+    ReceiptDuplicate:
+      value:
+        schemaVersion: patches-partner-v1
+        receiptId: RCP-DUP-req-4a9b8c7d-6e5f-4408-9102-a3b4c5d6e7f8
+        requestId: req-4a9b8c7d-6e5f-4408-9102-a3b4c5d6e7f8
+        clientId: arma-client
+        operation: activation.create
+        outcome: SUCCESS
+        at: 1768478500000
+        activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        orgId: ORG-ARMA-ALPHA
+        capability: traffic_stop_privacy
+        payloadHash: a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90
+        result:
+          activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+          orgId: ORG-ARMA-ALPHA
+          capability: traffic_stop_privacy
+          bindingId: BIND-ALPHA-TSP
+          status: ACTIVE
+          activatedAt: 1768478400000
+          deactivatedAt: null
+          revokedAt: null
+        duplicate: true
+    ReceiptDeactivate:
+      value:
+        schemaVersion: patches-partner-v1
+        receiptId: RCP-DEACTIVATE-req-5b0c9d8e-7f6a-4519-8213-b4c5d6e7f8a9
+        requestId: req-5b0c9d8e-7f6a-4519-8213-b4c5d6e7f8a9
+        clientId: arma-client
+        operation: activation.deactivate
+        outcome: SUCCESS
+        at: 1768478460000
+        activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        orgId: ORG-ARMA-ALPHA
+        capability: traffic_stop_privacy
+        result:
+          activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+          orgId: ORG-ARMA-ALPHA
+          capability: traffic_stop_privacy
+          bindingId: BIND-ALPHA-TSP
+          status: DEACTIVATED
+          activatedAt: 1768478400000
+          deactivatedAt: 1768478460000
+          revokedAt: null
+    ReceiptRevoke:
+      value:
+        schemaVersion: patches-partner-v1
+        receiptId: RCP-REVOKE-req-6c1d0e9f-8a7b-4620-9314-c5d6e7f8a9b0
+        requestId: req-6c1d0e9f-8a7b-4620-9314-c5d6e7f8a9b0
+        clientId: arma-client
+        operation: activation.revoke
+        outcome: SUCCESS
+        at: 1768478520000
+        activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+        orgId: ORG-ARMA-ALPHA
+        capability: traffic_stop_privacy
+        result:
+          activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+          orgId: ORG-ARMA-ALPHA
+          capability: traffic_stop_privacy
+          bindingId: BIND-ALPHA-TSP
+          status: REVOKED
+          activatedAt: 1768478400000
+          deactivatedAt: null
+          revokedAt: 1768478520000
+    ActivationStatus:
+      value:
+        requestId: req-7d2e1f0a-9b8c-4731-9425-d6e7f8a9b0c1
+        activation:
+          activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+          orgId: ORG-ARMA-ALPHA
+          capability: traffic_stop_privacy
+          bindingId: BIND-ALPHA-TSP
+          status: ACTIVE
+          activatedAt: 1768478400000
+          deactivatedAt: null
+          revokedAt: null
+    EventList:
+      value:
+        requestId: req-8e3f2a1b-0c9d-4842-9536-e7f8a9b0c1d2
+        orgId: ORG-ARMA-ALPHA
+        events:
+          - eventId: EVT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+            capability: traffic_stop_privacy
+            activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+            type: activation.created
+            at: 1768478400000
+          - eventId: EVT-req-6c1d0e9f-8a7b-4620-9314-c5d6e7f8a9b0
+            capability: traffic_stop_privacy
+            activationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+            type: activation.revoked
+            at: 1768478520000
+    AuditList:
+      value:
+        requestId: req-9f403b2c-1d0e-4953-9647-f8a9b0c1d2e3
+        orgId: ORG-ARMA-ALPHA
+        audit:
+          - sequence: 1
+            at: 1768478400000
+            actorKind: PARTNER
+            clientId: arma-client
+            requestId: req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+            operation: activation.create
+            outcome: SUCCESS
+          - sequence: 2
+            at: 1768478450000
+            actorKind: SYSTEM
+            clientId: arma-client
+            requestId: req-5b0c9d8e-7f6a-4519-8213-b4c5d6e7f8a9
+            operation: activation.create
+            outcome: FAILED
+    AuthMissing:
+      value:
+        error: AUTH_MISSING
+        errorClass: AUTHENTICATION
+        requestId: req-0a1b2c3d-2e3f-4a5b-8c6d-1e2f3a4b5c6d
+    AuthSignatureInvalid:
+      value:
+        error: SIGNATURE_INVALID
+        errorClass: AUTHENTICATION
+        requestId: req-1b2c3d4e-3f4a-4b5c-9d7e-2f3a4b5c6d7e
+    AuthCredentialExpired:
+      value:
+        error: CREDENTIAL_EXPIRED
+        errorClass: AUTHENTICATION
+        keyId: arma-key-1
+        graceUntil: 1768479000000
+        requestId: req-2c3d4e5f-4a5b-4c6d-8e8f-3a4b5c6d7e8f
+    AuthPartnerSuspended:
+      value:
+        error: PARTNER_SUSPENDED
+        errorClass: AUTHENTICATION
+        clientId: arma-client
+        requestId: req-3d4e5f6a-5b6c-4d7e-9f90-4b5c6d7e8f90
+    AuthNonceReplayed:
+      value:
+        error: NONCE_REPLAYED
+        errorClass: AUTHENTICATION
+        nonce: nonce-9f8e7d6c5b4a3210fedcba9876543210
+        firstSeenAt: 1768478400000
+        firstSeenRequestId: req-4e5f6a7b-6c7d-4e8f-901a-5c6d7e8f90a1
+        requestId: req-5f6a7b8c-7d8e-4f90-812b-6d7e8f90a1b2
+    OrgIdRequired:
+      value:
+        error: ORG_ID_REQUIRED
+        errorClass: INPUT
+        requestId: req-6a7b8c9d-8e9f-401a-923c-7e8f90a1b2c3
+    ActivationInputMissing:
+      value:
+        error: ACTIVATION_INPUT_MISSING
+        fields: [idempotencyKey]
+    MalformedPayload:
+      value:
+        error: MALFORMED_PAYLOAD
+        errorClass: INPUT
+        requestId: req-7b8c9d0e-9f0a-412b-834d-8f90a1b2c3d4
+    PayloadTooLarge:
+      value:
+        error: PAYLOAD_TOO_LARGE
+        errorClass: INPUT
+        limitBytes: 262144
+        requestId: req-8c9d0e1f-0a1b-423c-945e-90a1b2c3d4e5
+    PolicyEntitlementMissing:
+      value:
+        error: ENTITLEMENT_MISSING
+        errorClass: AUTHORIZATION
+    PolicyBindingInactive:
+      value:
+        error: BINDING_INACTIVE
+        errorClass: AUTHORIZATION
+    PolicyOrgNotBoundGet:
+      value:
+        error: ORG_NOT_BOUND_TO_PARTNER
+        errorClass: AUTHORIZATION
+        requestId: req-9d0e1f2a-1b2c-434d-856f-a1b2c3d4e5f6
+    IdempotencyConflict:
+      value:
+        error: IDEMPOTENCY_KEY_CONFLICT
+        errorClass: IDEMPOTENCY
+        existingActivationId: ACT-req-3f8e2a10-7c4b-4d91-9a62-5e6d8f0a1b2c
+    ActivationRevoked:
+      value:
+        error: ACTIVATION_REVOKED
+        errorClass: STATE
+    ActivationUnknownGet:
+      value:
+        error: ACTIVATION_UNKNOWN
+        errorClass: NOT_FOUND
+        requestId: req-0e1f2a3b-2c3d-445e-9670-b2c3d4e5f6a7
+    ActivationUnknownPost:
+      value:
+        error: ACTIVATION_UNKNOWN
+        errorClass: NOT_FOUND
+    RateLimited:
+      value:
+        error: RATE_LIMITED
+        errorClass: RATE_LIMIT
+        retryAfterMs: 1000
+        requestId: req-1f2a3b4c-3d4e-456f-8781-c3d4e5f6a7b8
+    DownstreamUnavailable:
+      value:
+        error: DOWNSTREAM_UNAVAILABLE
+        errorClass: DOWNSTREAM
+    PersistenceFailed:
+      value:
+        error: PARTNER_PERSISTENCE_FAILED
+        errorClass: PERSISTENCE
+    ApiDisabled:
+      value:
+        error: PARTNER_API_DISABLED
+    RouteNotFound:
+      value:
+        error: NOT_FOUND
+        requestId: req-2a3b4c5d-4e5f-4670-9892-d4e5f6a7b8c9

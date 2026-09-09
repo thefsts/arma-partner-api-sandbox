@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARMA Law Shield API v1 — OpenAPI 3.1 Contract</title>
+<style>:root { --accent: #8250df; }
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1f2328; background: #fff; line-height: 1.55; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 80px; }
+a { color: #0969da; text-decoration: none; } a:hover { text-decoration: underline; }
+header.hero { border-bottom: 4px solid var(--accent); padding-bottom: 18px; margin-bottom: 28px; }
+header.hero h1 { font-size: 26px; margin: 0 0 6px; }
+header.hero .meta { color: #57606a; font-size: 14px; }
+header.hero .meta span { margin-right: 18px; }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; background: var(--accent); }
+.info { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 14px 18px; margin: 18px 0; }
+.info p { margin: 6px 0; }
+h2 { font-size: 20px; margin: 34px 0 10px; border-bottom: 1px solid #d8dee4; padding-bottom: 6px; }
+h3.schema-name { font-size: 16px; margin: 0 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+h4 { font-size: 13px; margin: 18px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: #57606a; }
+.op { border: 1px solid #d0d7de; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+.op-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.method { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 13px; padding: 2px 8px; border-radius: 5px; color: #fff; }
+.m-get { background: #1a7f37; } .m-post { background: #8250df; } .m-put { background: #bf8700; } .m-patch { background: #bf8700; } .m-delete { background: #cf222e; }
+.op-path { font-size: 15px; font-weight: 600; }
+.op-title { margin: 8px 0 4px; font-size: 15px; }
+.opid { font-size: 13px; background: #f6f8fa; padding: 1px 6px; border-radius: 4px; }
+.tag { display: inline-block; background: #ddf4ff; color: #0969da; border-radius: 999px; font-size: 11px; padding: 1px 8px; font-weight: 600; margin-left: 4px; }
+.sec-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #fff8c5; border: 1px solid #d4a72c; font-weight: 600; }
+.sec-badge.unauth { background: #dafbe1; border-color: #2da44e; }
+.tbl { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 13px; }
+.tbl th { text-align: left; background: #f6f8fa; border: 1px solid #d8dee4; padding: 6px 10px; }
+.tbl td { border: 1px solid #eaeef2; padding: 6px 10px; vertical-align: top; }
+.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.req { color: #cf222e; font-weight: 700; font-size: 11px; }
+.opt { color: #57606a; font-size: 11px; }
+.resp { display: flex; gap: 12px; margin: 8px 0; }
+.resp-code { font-family: ui-monospace, monospace; font-weight: 700; padding: 2px 10px; border-radius: 5px; color: #fff; min-width: 46px; text-align: center; font-size: 13px; height: fit-content; }
+.code-2 { background: #1a7f37; } .code-4 { background: #bf8700; } .code-5 { background: #cf222e; } .code-default { background: #57606a; }
+.resp-body { flex: 1; }
+.resp-body p { margin: 2px 0; }
+.resp-media { margin: 6px 0; font-size: 13px; }
+.lbl { display: inline-block; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 4px; padding: 0 6px; font-size: 11px; font-family: ui-monospace, monospace; }
+.t-ref { color: #8250df; font-weight: 600; } .t-array { color: #0550ae; } .t-object { color: #0550ae; } .t-string { color: #0a3069; } .t-number, .t-integer { color: #953800; } .t-boolean { color: #116329; } .t-union { color: #57606a; }
+.t-meta { color: #57606a; font-size: 11.5px; }
+.example { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 12px; margin: 6px 0; max-width: 100%; }
+details.ex summary { cursor: pointer; font-size: 12px; color: #0969da; margin: 4px 0; }
+.schema { border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+.kv { margin: 3px 0; font-size: 13px; }
+nav.toc { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 18px; margin: 18px 0; }
+nav.toc b { font-size: 13px; }
+nav.toc ul { margin: 6px 0 2px; padding-left: 20px; font-size: 13px; }
+nav.toc li { margin: 2px 0; }
+footer { border-top: 1px solid #d8dee4; margin-top: 50px; padding-top: 14px; color: #57606a; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <h1>ARMA Law Shield API v1 — OpenAPI 3.1 Contract</h1>
+  <div class="meta">
+    <span class="pill">OpenAPI 3.1.0</span>
+    <span><b>ARMA Law Shield API</b> <span class="mono">v1.0.0</span></span>
+    <span>License: Proprietary</span>
+  </div>
+  <div class="kv"><span class="lbl">server</span> <code class="mono">{protocol}://{gatewayHost}</code> <span class="t-meta">(protocol=https, gatewayHost=lawshield.example.invalid)</span></div><div class="kv"><span class="lbl">server</span> <code class="mono">{protocol}://{processorHost}</code> <span class="t-meta">(protocol=https, processorHost=processor.internal.invalid)</span></div>
+</header>
+<div class="info">
+  <p><b>Description</b></p>
+  <p>Wire contract for protocol `arma-lawshield.v1`.</p><p>Scope — exactly the implemented v1 surface:</p><p>  * `POST /api/lawshield/arma` — the Law Shield inbound gateway (verifies the</p><p>    ARMA-signed envelope end-to-end, then forwards to the durable processor</p><p>    and returns a signed receipt on acceptance).</p><p>  * `GET /api/lawshield/integration-readiness` — unauthenticated readiness probe.</p><p>  * `POST /process` and `GET /status` — the durable processor&#39;s</p><p>    service-to-service routes (Bearer auth). The gateway calls `POST /process`</p><p>    after verification; ARMA reconciliation calls `GET /status`.</p><p>Two security models, both cumulative with the other checks:</p><p>  * Partner-facing (gateway + readiness): HMAC-SHA256 request signing over</p><p>    the 4-field canonical string with the five `x-arma-*` headers. Signature</p><p>    verification NEVER replaces tenant (org/case mapping), entitlement</p><p>    (record-type allow-list + disclosure policy), or human-authorization</p><p>    checks — every layer is enforced.</p><p>  * Service-to-service (processor): Bearer token + gateway-forwarded</p><p>    verified-context headers + full defense-in-depth re-validation.</p><p>Behavioral invariants (all fail-closed):</p><p>  * Every error body is `{ error, transferId, accepted: false }` (gateway) or</p><p>    `{ accepted: false, error, ... }` (processor) — raw runtime messages are</p><p>    never echoed; unknown codes surface as the generic `INTEGRATION_REJECTED`</p><p>    (gateway) or `PROCESSOR_PERSISTENCE_FAILED` (processor).</p><p>  * Nonce single-use (gateway replay guard + authoritative processor nonce</p><p>    registry) with a 10-minute validity window; timestamps must be within</p><p>    ±5 minutes.</p><p>  * Idempotency: same key + same content collapses to the SAME deterministic</p><p>    receipt (no second disclosure); same key + different content is an</p><p>    integrity conflict, quarantined, never accepted.</p><p>  * Durable writes (nonce + idempotency + transfer + receipt + audit) commit</p><p>    in ONE transaction — partial outcomes cannot exist.</p><p>  * Success receipts are signed over the EXACT serialized receipt bytes</p><p>    (verify raw, never re-serialize).</p><p>  * AI actors can never authorize a transfer (blocked at the gateway AND at</p><p>    the processor).</p><p>  * Minimum-necessary disclosure policy is enforced processor-side on the</p><p>    flat redacted payload; the gateway enforces signature/hash/injection</p><p>    screens only.</p>
+</div>
+<nav class="toc"><b>Operations</b><ul><li><a href="#op-post-api-lawshield-arma"><span class="method m-post" style="font-size:10px">POST</span> /api/lawshield/arma — submitTransfer</a></li><li><a href="#op-get-api-lawshield-integration-readiness"><span class="method m-get" style="font-size:10px">GET</span> /api/lawshield/integration-readiness — getIntegrationReadiness</a></li><li><a href="#op-post-process"><span class="method m-post" style="font-size:10px">POST</span> /process — processTransfer</a></li><li><a href="#op-get-status"><span class="method m-get" style="font-size:10px">GET</span> /status — getTransferStatus</a></li></ul></nav>
+<h2>Paths</h2>
+<div class="op" id="op-post-api-lawshield-arma">
+  <div class="op-head"><span class="method m-post">POST</span><span class="op-path mono">/api/lawshield/arma</span><div class="sec-badge">ArmaSignedRequest</div></div>
+  <div class="op-title"><code class="mono opid">submitTransfer</code> — Submit an ARMA→Law Shield disclosure transfer. <span class="tag">Inbound Transfer Gateway</span></div>
+  <p>The single inbound route for `arma-lawshield.v1` transfers.</p><p>Cumulative security controls, in enforcement order (all must pass — none</p><p>replaces any other):</p><p>  1. Method — POST only (else 405 `METHOD_NOT_ALLOWED` with `Allow: POST`).</p><p>  2. Content type — must start with `application/json` (else 415 `CONTENT_TYPE_NOT_ALLOWED`).</p><p>  3. Kill switch — `LAW_SHIELD_ARMA_INTEGRATION_DISABLED` (else 503 `INTEGRATION_DISABLED`).</p><p>  4. Signing secret configured (else 503 `INTEGRATION_NOT_CONFIGURED`).</p><p>  5. Body size ≤ 1,048,576 bytes (else 413 `PAYLOAD_TOO_LARGE`).</p><p>  6. All five `x-arma-*` headers present (else 401 `MISSING_SECURITY_HEADERS`).</p><p>  7. Schema version — header must equal `arma-lawshield.v1` (else 422 `SCHEMA_VERSION_UNSUPPORTED`).</p><p>  8. Nonce format — `[A-Za-z0-9_-]{20,128}` (else 400 `INVALID_NONCE`).</p><p>  9. Timestamp freshness — ±5 minutes of server time (else 409 `STALE_OR_FUTURE_REQUEST`).</p><p> 10. Body hash — `x-arma-content-sha256` must equal sha256 of the raw request bytes (else 401 `BODY_HASH_MISMATCH`).</p><p> 11. HMAC signature over the 4-field canonical string (else 401 `INVALID_SIGNATURE`).</p><p> 12. Body parses as JSON (else 400 `INVALID_JSON`).</p><p> 13. Envelope validation — required fields, system route, record type,</p><p>     human-only authorization, org/case mapping, timestamps/expiry,</p><p>     payload hash, injection screening (codes below).</p><p> 14. First-layer nonce replay guard (else 409 `REPLAYED_NONCE`).</p><p> 15. Processor configured (else 503 `INTEGRATION_PROCESSOR_NOT_CONFIGURED`);</p><p>     transport failures are structured 502s; processor outcomes are</p><p>     reconciled and receipt-verified before a 200 is returned.</p><p>Order-of-evaluation notes (verified from the implementation):</p><p>  * `transferId` is `null` in error bodies for all failures before the</p><p>    envelope&#39;s `transferId` is read (steps 1–11); it carries the real</p><p>    transfer id from step 12 onward.</p><p>  * `REPLAYED_NONCE` (gateway layer) is thrown AFTER verification, so its</p><p>    error body carries the real `transferId`.</p><p>  * Every error body carries `accepted: false`. Error bodies never carry</p><p>    `status: &quot;ACCEPTED&quot;`.</p><p>On success (200) the response body IS the receipt (15 fields) and is</p><p>signed over its exact serialized bytes — see the `X-LawShield-*` response</p><p>headers.</p>
+  <h4>Parameters</h4><table class="tbl"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td class="mono">ArmaSchemaVersion</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td><span class="req">required</span></td><td>Must be exactly `arma-lawshield.v1`.</td></tr><tr><td class="mono">ArmaTimestamp</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[0-9]+$</span></td><td><span class="req">required</span></td><td>Epoch milliseconds; must be within ±300,000 ms (5 minutes) of server time.</td></tr><tr><td class="mono">ArmaNonce</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[A-Za-z0-9_-]{20,128}$</span></td><td><span class="req">required</span></td><td>Single-use nonce; 20–128 chars of `A-Za-z0-9_-`; 10-minute validity window.</td></tr><tr><td class="mono">ArmaContentSha256</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td><span class="req">required</span></td><td>Lowercase-hex sha256 of the raw request body bytes.</td></tr><tr><td class="mono">ArmaSignature</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td><span class="req">required</span></td><td>Lowercase-hex HMAC-SHA256 over the 4-field canonical string.</td></tr><tr><td class="mono">ContentType</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn]/[Jj][Ss][Oo][Nn]</span></td><td><span class="req">required</span></td><td>Must start with `application/json` (case-insensitive).</td></tr></tbody></table>
+  <h4>Request Body <span class="req">required</span></h4><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-TransferEnvelope">TransferEnvelope</a></div>
+  <h4>Responses</h4><div class="resp"><div class="resp-code code-200">200</div><div class="resp-body"><p>Accepted. The response body is the signed receipt. Duplicate delivery</p><p>(fresh nonce, same idempotency key + content) returns the SAME</p><p>deterministic receipt fields — no second disclosure is created.</p><table class="tbl hdr-tbl"><thead><tr><th>Header</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">X-LawShield-Content-SHA256</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td>sha256 (lowercase hex) of the EXACT serialized receipt bytes.</td></tr><tr><td class="mono">X-LawShield-Signature</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td>HMAC-SHA256 (lowercase hex) over the EXACT serialized receipt bytes.</td></tr><tr><td class="mono">X-LawShield-Schema-Version</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td>Receipt schema version (`arma-lawshield.v1`).</td></tr><tr><td class="mono">X-LawShield-Receipt-Id</td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td>The receipt id (matches the body&#39;s `receiptId`).</td></tr><tr><td class="mono">Content-Type</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;application/json&quot;</span></td><td>Response media type.</td></tr><tr><td class="mono">Cache-Control</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-store&quot;</span></td><td>No-store on every response.</td></tr><tr><td class="mono">X-Content-Type-Options</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;nosniff&quot;</span></td><td>nosniff on every response.</td></tr><tr><td class="mono">Referrer-Policy</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-referrer&quot;</span></td><td>no-referrer on every response.</td></tr><tr><td class="mono">X-Frame-Options</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;DENY&quot;</span></td><td>DENY on every response.</td></tr></tbody></table><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-LawShieldReceipt">LawShieldReceipt</a></div><details class="ex"><summary>example: accepted</summary><pre class="example"><code>{
+  &quot;schemaVersion&quot;: &quot;arma-lawshield.v1&quot;,
+  &quot;receiptId&quot;: &quot;RCP-TRX-0001&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;,
+  &quot;status&quot;: &quot;ACCEPTED&quot;,
+  &quot;accepted&quot;: true,
+  &quot;acceptedAt&quot;: 1760000002000,
+  &quot;armaOrgId&quot;: &quot;org-arma-1&quot;,
+  &quot;lawShieldOrgId&quot;: &quot;ls-org-1&quot;,
+  &quot;incidentId&quot;: &quot;INC-1001&quot;,
+  &quot;lawShieldCaseId&quot;: &quot;LS-CASE-1&quot;,
+  &quot;recordType&quot;: &quot;CASE_REFERRAL&quot;,
+  &quot;recordId&quot;: &quot;rec-0001&quot;,
+  &quot;receivedPayloadHash&quot;: &quot;3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe&quot;,
+  &quot;processingResult&quot;: &quot;PERSISTED&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-400">400</div><div class="resp-body"><p>Malformed request. `INVALID_JSON`, `INVALID_NONCE`, `INVALID_TIMESTAMPS`,</p><p>`INVALID_TIME_ORDER`, or `INVALID_FIELD_&lt;Field&gt;` for any of the 11</p><p>required non-empty string fields.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: invalidJson</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;INVALID_JSON&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details><details class="ex"><summary>example: invalidNonce</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;INVALID_NONCE&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details><details class="ex"><summary>example: invalidField</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;INVALID_FIELD_transferId&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-401">401</div><div class="resp-body"><p>Verification or authorization failure. Codes: `INVALID_SIGNATURE`,</p><p>`BODY_HASH_MISMATCH`, `PAYLOAD_HASH_MISMATCH`, `MISSING_SECURITY_HEADERS`,</p><p>`AI_CANNOT_AUTHORIZE_TRANSFER`, `AI_OR_EXECUTABLE_INSTRUCTION_BLOCKED`,</p><p>`MAPPING_REQUIRED`, `ORG_MAPPING_MISMATCH`, `CASE_MAPPING_REQUIRED`,</p><p>`INVALID_SYSTEM_ROUTE`, `PAYLOAD_REQUIRED`, `PAYLOAD_STRUCTURE_TOO_DEEP`,</p><p>and `INTEGRATION_REJECTED` (masked unknown).</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: invalidSignature</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;INVALID_SIGNATURE&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details><details class="ex"><summary>example: bodyHashMismatch</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;BODY_HASH_MISMATCH&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details><details class="ex"><summary>example: aiCannotAuthorize</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;AI_CANNOT_AUTHORIZE_TRANSFER&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-405">405</div><div class="resp-body"><p>Method not allowed. POST only; carries `Allow: POST`.</p><table class="tbl hdr-tbl"><thead><tr><th>Header</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">Allow</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;POST&quot;</span></td><td>Always `POST`.</td></tr></tbody></table><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayErrorNoTransferId">GatewayErrorNoTransferId</a></div><details class="ex"><summary>example: methodNotAllowed</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;METHOD_NOT_ALLOWED&quot;,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-409">409</div><div class="resp-body"><p>Replay or expiry. Codes: `REPLAYED_NONCE` (real transferId present —</p><p>thrown after verification), `TRANSFER_EXPIRED`, `STALE_OR_FUTURE_REQUEST`.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: replayedNonce</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;REPLAYED_NONCE&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false
+}</code></pre></details><details class="ex"><summary>example: transferExpired</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;TRANSFER_EXPIRED&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-413">413</div><div class="resp-body"><p>Body exceeds 1,048,576 bytes.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: payloadTooLarge</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;PAYLOAD_TOO_LARGE&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-415">415</div><div class="resp-body"><p>Content type is not `application/json` (case-insensitive prefix match).</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayErrorNoTransferId">GatewayErrorNoTransferId</a></div><details class="ex"><summary>example: contentTypeNotAllowed</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;CONTENT_TYPE_NOT_ALLOWED&quot;,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-422">422</div><div class="resp-body"><p>Version or record type not supported. Codes:</p><p>`SCHEMA_VERSION_UNSUPPORTED` (header or body value), `RECORD_TYPE_NOT_ALLOWED`.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: schemaVersionUnsupported</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;SCHEMA_VERSION_UNSUPPORTED&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details><details class="ex"><summary>example: recordTypeNotAllowed</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;RECORD_TYPE_NOT_ALLOWED&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-500">500</div><div class="resp-body"><p>Masked unknown error (raw runtime messages are never echoed).</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: integrationRejected</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;INTEGRATION_REJECTED&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-502">502</div><div class="resp-body"><p>Processor-side failure. Codes and discriminators:</p><p>* `PROCESSOR_TIMEOUT` — transport timeout; `retryable: true`.</p><p>* `PROCESSOR_UNAVAILABLE` — transport unreachable / non-JSON response</p><p>  (`PROCESSOR_NON_JSON_RESPONSE`) / processor fault; `retryable: true` for the transport codes.</p><p>* `PROCESSOR_RECEIPT_MISMATCH` — ambiguous outcome; `reconciliationRequired: true`; never retry blind.</p><p>* Processor business rejection passthrough — the processor&#39;s own</p><p>  `error` code (e.g. `ORG_NOT_AUTHORIZED`) with `processorStatus`;</p><p>  processor-declared rejections surface as gateway 502.</p><p>* `PROCESSOR_REJECTED_TRANSFER` — fallback when the processor</p><p>  rejects without a structured error code.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: processorTimeout</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;PROCESSOR_TIMEOUT&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false,
+  &quot;retryable&quot;: true
+}</code></pre></details><details class="ex"><summary>example: processorUnavailable</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;PROCESSOR_UNAVAILABLE&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false,
+  &quot;retryable&quot;: true
+}</code></pre></details><details class="ex"><summary>example: processorReceiptMismatch</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;PROCESSOR_RECEIPT_MISMATCH&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false,
+  &quot;reconciliationRequired&quot;: true
+}</code></pre></details><details class="ex"><summary>example: processorBusinessRejection</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;ORG_NOT_AUTHORIZED&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false,
+  &quot;processorStatus&quot;: 200
+}</code></pre></details><details class="ex"><summary>example: processorRejectedFallback</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;PROCESSOR_REJECTED_TRANSFER&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false,
+  &quot;processorStatus&quot;: 200
+}</code></pre></details><details class="ex"><summary>example: processorNonJson</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;PROCESSOR_NON_JSON_RESPONSE&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-503">503</div><div class="resp-body"><p>Disabled or unconfigured. Codes: `INTEGRATION_DISABLED` (kill switch),</p><p>`INTEGRATION_NOT_CONFIGURED` (missing signing secret), `RECEIPT_SIGNING_NOT_CONFIGURED`</p><p>(missing receipt secret), `INTEGRATION_PROCESSOR_NOT_CONFIGURED`.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-GatewayError">GatewayError</a></div><details class="ex"><summary>example: integrationDisabled</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;INTEGRATION_DISABLED&quot;,
+  &quot;transferId&quot;: null,
+  &quot;accepted&quot;: false
+}</code></pre></details><details class="ex"><summary>example: processorNotConfigured</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;INTEGRATION_PROCESSOR_NOT_CONFIGURED&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;accepted&quot;: false
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-default">default</div><div class="resp-body"><p>Unexpected response (never a raw runtime message — masked to a structured code).</p></div></div>
+</div><div class="op" id="op-get-api-lawshield-integration-readiness">
+  <div class="op-head"><span class="method m-get">GET</span><span class="op-path mono">/api/lawshield/integration-readiness</span><div class="sec-badge unauth">unauthenticated</div></div>
+  <div class="op-title"><code class="mono opid">getIntegrationReadiness</code> — Readiness probe for the Law Shield integration. <span class="tag">Inbound Transfer Gateway</span></div>
+  <p>Unauthenticated readiness probe. Returns 200 when gateway + receipt signing</p><p>+ processor are configured and the kill switch is off; 503 otherwise.</p><p>The `ready` boolean is the conjunction of `gatewayConfigured`,</p><p>`receiptSigningConfigured`, `processorConfigured`, and NOT `killSwitchActive`.</p>
+  
+  
+  <h4>Responses</h4><div class="resp"><div class="resp-code code-200">200</div><div class="resp-body"><p>Ready — all components configured, kill switch off.</p><table class="tbl hdr-tbl"><thead><tr><th>Header</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">Content-Type</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;application/json&quot;</span></td><td>Response media type.</td></tr><tr><td class="mono">Cache-Control</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-store&quot;</span></td><td>No-store on every response.</td></tr><tr><td class="mono">X-Content-Type-Options</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;nosniff&quot;</span></td><td>nosniff on every response.</td></tr><tr><td class="mono">Referrer-Policy</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-referrer&quot;</span></td><td>no-referrer on every response.</td></tr><tr><td class="mono">X-Frame-Options</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;DENY&quot;</span></td><td>DENY on every response.</td></tr></tbody></table><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-IntegrationReadiness">IntegrationReadiness</a></div><details class="ex"><summary>example: ready</summary><pre class="example"><code>{
+  &quot;service&quot;: &quot;law-shield-arma-integration&quot;,
+  &quot;ready&quot;: true,
+  &quot;schemaVersion&quot;: &quot;arma-lawshield.v1&quot;,
+  &quot;gatewayConfigured&quot;: true,
+  &quot;receiptSigningConfigured&quot;: true,
+  &quot;processorConfigured&quot;: true,
+  &quot;killSwitchActive&quot;: false,
+  &quot;maxBodyBytes&quot;: 1048576,
+  &quot;maxClockSkewMs&quot;: 300000,
+  &quot;allowedRecordTypes&quot;: [
+    &quot;CASE_REFERRAL&quot;,
+    &quot;INCIDENT_METADATA&quot;,
+    &quot;EVIDENCE_MANIFEST&quot;,
+    &quot;EVIDENCE_PACKAGE_REFERENCE&quot;,
+    &quot;CHAIN_OF_CUSTODY_UPDATE&quot;,
+    &quot;TRANSFER_STATUS&quot;,
+    &quot;CASE_STATUS_UPDATE&quot;
+  ],
+  &quot;checkedAt&quot;: 1760000003000
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-405">405</div><div class="resp-body"><p>Method not allowed. GET only; carries `Allow: GET`.</p><table class="tbl hdr-tbl"><thead><tr><th>Header</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">Allow</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;GET&quot;</span></td><td>Always `GET`.</td></tr></tbody></table><div class="resp-media"><span class="lbl">application/json</span> <span class="t-object">object</span></div><details class="ex"><summary>example: methodNotAllowed</summary><pre class="example"><code>{
+  &quot;error&quot;: &quot;METHOD_NOT_ALLOWED&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-503">503</div><div class="resp-body"><p>Not ready — at least one component unconfigured or the kill switch is active.</p><table class="tbl hdr-tbl"><thead><tr><th>Header</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">Content-Type</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;application/json&quot;</span></td><td>Response media type.</td></tr><tr><td class="mono">Cache-Control</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-store&quot;</span></td><td>No-store on every response.</td></tr><tr><td class="mono">X-Content-Type-Options</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;nosniff&quot;</span></td><td>nosniff on every response.</td></tr><tr><td class="mono">Referrer-Policy</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-referrer&quot;</span></td><td>no-referrer on every response.</td></tr><tr><td class="mono">X-Frame-Options</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;DENY&quot;</span></td><td>DENY on every response.</td></tr></tbody></table><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-IntegrationReadiness">IntegrationReadiness</a></div><details class="ex"><summary>example: notReady</summary><pre class="example"><code>{
+  &quot;service&quot;: &quot;law-shield-arma-integration&quot;,
+  &quot;ready&quot;: false,
+  &quot;schemaVersion&quot;: &quot;arma-lawshield.v1&quot;,
+  &quot;gatewayConfigured&quot;: true,
+  &quot;receiptSigningConfigured&quot;: true,
+  &quot;processorConfigured&quot;: false,
+  &quot;killSwitchActive&quot;: false,
+  &quot;maxBodyBytes&quot;: 1048576,
+  &quot;maxClockSkewMs&quot;: 300000,
+  &quot;allowedRecordTypes&quot;: [
+    &quot;CASE_REFERRAL&quot;,
+    &quot;INCIDENT_METADATA&quot;,
+    &quot;EVIDENCE_MANIFEST&quot;,
+    &quot;EVIDENCE_PACKAGE_REFERENCE&quot;,
+    &quot;CHAIN_OF_CUSTODY_UPDATE&quot;,
+    &quot;TRANSFER_STATUS&quot;,
+    &quot;CASE_STATUS_UPDATE&quot;
+  ],
+  &quot;checkedAt&quot;: 1760000003000
+}</code></pre></details></div></div>
+</div><div class="op" id="op-post-process">
+  <div class="op-head"><span class="method m-post">POST</span><span class="op-path mono">/process</span><div class="sec-badge">ProcessorBearer</div></div>
+  <div class="op-title"><code class="mono opid">processTransfer</code> — Process a gateway-forwarded transfer (service-to-service). <span class="tag">Durable Processor</span></div>
+  <p>The durable processor&#39;s inbound route. The gateway calls this after it has</p><p>verified the ARMA request end-to-end; the forwarded headers carry the</p><p>gateway-verified context (`x-verified-arma-nonce`, `x-verified-arma-content-sha256`,</p><p>`x-integration-schema-version`, `x-integration-transfer-id`) over the</p><p>ORIGINAL raw envelope bytes under the Bearer token.</p><p>The processor never trusts the gateway blindly — it re-validates everything</p><p>defense-in-depth (Bearer auth, kill switch, forwarded-header consistency,</p><p>canonical envelope re-validation, payload-hash recompute, human-authorization</p><p>denial, org/case mapping, minimum-necessary disclosure policy) and then</p><p>commits nonce + idempotency + transfer + receipt + audit inside ONE</p><p>transaction.</p><p>Outcome model (all deterministic, gateway-compatible):</p><p>  * 200 `accepted: true` — receipt fields (first delivery).</p><p>  * 200 same receipt — duplicate delivery (fresh nonce, same idempotency</p><p>    key + content): the stored deterministic receipt; no second disclosure.</p><p>  * 200 `accepted: false` — business rejection (the processor&#39;s error code</p><p>    + transferId + idempotencyKey; `quarantined: true` +</p><p>    `violationPaths` for the policy/integrity quarantine codes).</p><p>  * 500 — persistence failure (everything rolled back; fail closed).</p><p>  * 503 — kill switch active, or processor fault.</p><p>Business rejection codes: `ORG_MAPPING_MISSING`, `ORG_MAPPING_INACTIVE`,</p><p>`ORG_MAPPING_MISMATCH`, `CASE_MAPPING_MISSING`, `CASE_MAPPING_INACTIVE`,</p><p>`CASE_MAPPING_MISMATCH`, `AUTHORIZER_UNKNOWN`, `AUTHORIZER_INACTIVE`,</p><p>`AUTHORIZER_ORG_MISMATCH`, `AI_CANNOT_AUTHORIZE_TRANSFER`,</p><p>`RECORD_TYPE_NOT_ALLOWED`, `MINIMUM_NECESSARY_VIOLATION`,</p><p>`ALWAYS_REDACTED_FIELD_PRESENT`, `REPLAYED_NONCE`,</p><p>`IDEMPOTENCY_KEY_CONFLICT`, `STALE_OR_FUTURE_REQUEST`, plus the</p><p>envelope re-validation codes (`INVALID_FIELD_*`, `INVALID_JSON`,</p><p>`INVALID_TIMESTAMPS`, `INVALID_TIME_ORDER`, `INVALID_NONCE`,</p><p>`INVALID_SYSTEM_ROUTE`, `MAPPING_REQUIRED`, `ORG_MAPPING_MISMATCH`,</p><p>`CASE_MAPPING_REQUIRED`, `PAYLOAD_REQUIRED`, `PAYLOAD_HASH_MISMATCH`,</p><p>`PAYLOAD_STRUCTURE_TOO_DEEP`, `TRANSFER_EXPIRED`,</p><p>`AI_OR_EXECUTABLE_INSTRUCTION_BLOCKED`, `SCHEMA_VERSION_UNSUPPORTED`,</p><p>`RECORD_TYPE_NOT_ALLOWED`). A defensive fallback code `INVALID_ENVELOPE`</p><p>exists for a non-Error throw out of envelope re-validation (unreachable</p><p>in practice; every re-validation failure carries its structured code).</p>
+  <h4>Parameters</h4><table class="tbl"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td class="mono">Authorization</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^Bearer .+$</span></td><td><span class="req">required</span></td><td>Bearer token for the processor (service-to-service).</td></tr><tr><td class="mono">ForwardedNonce</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[A-Za-z0-9_-]{20,128}$</span></td><td><span class="req">required</span></td><td>The gateway-verified nonce, forwarded for the processor&#39;s authoritative registry.</td></tr><tr><td class="mono">ForwardedContentSha256</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td><span class="req">required</span></td><td>The gateway-verified sha256 of the raw envelope bytes (64 lowercase hex).</td></tr><tr><td class="mono">ForwardedSchemaVersion</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td><span class="req">required</span></td><td>Must be `arma-lawshield.v1` (forwarded by the gateway).</td></tr><tr><td class="mono">ForwardedTransferId</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td><span class="opt">optional</span></td><td>The gateway-verified transfer id; when present it must match the</p><p>envelope&#39;s `transferId` (else `PROCESSOR_TRANSFER_ID_MISMATCH`).</td></tr></tbody></table>
+  <h4>Request Body <span class="req">required</span></h4><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-TransferEnvelope">TransferEnvelope</a></div>
+  <h4>Responses</h4><div class="resp"><div class="resp-code code-200">200</div><div class="resp-body"><p>Deterministic processing outcome: accepted receipt (first or duplicate</p><p>delivery) or business rejection. The `accepted` boolean discriminates.</p><div class="resp-media"><span class="lbl">application/json</span>  <span class="t-meta">oneOf [ <a class="t-ref" href="#schema-ProcessorAccepted">ProcessorAccepted</a> , <a class="t-ref" href="#schema-ProcessorRejected">ProcessorRejected</a> ]</span></div><details class="ex"><summary>example: accepted</summary><pre class="example"><code>{
+  &quot;accepted&quot;: true,
+  &quot;receiptId&quot;: &quot;RCP-TRX-0001&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;acceptedAt&quot;: 1760000002000,
+  &quot;processingResult&quot;: &quot;PERSISTED&quot;,
+  &quot;payloadHash&quot;: &quot;3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe&quot;
+}</code></pre></details><details class="ex"><summary>example: duplicate</summary><pre class="example"><code>{
+  &quot;accepted&quot;: true,
+  &quot;receiptId&quot;: &quot;RCP-TRX-0001&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;acceptedAt&quot;: 1760000002000,
+  &quot;processingResult&quot;: &quot;PERSISTED&quot;,
+  &quot;payloadHash&quot;: &quot;3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe&quot;
+}</code></pre></details><details class="ex"><summary>example: replayedNonce</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;REPLAYED_NONCE&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;
+}</code></pre></details><details class="ex"><summary>example: orgMappingInactive</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;ORG_MAPPING_INACTIVE&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;
+}</code></pre></details><details class="ex"><summary>example: idempotencyConflict</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;IDEMPOTENCY_KEY_CONFLICT&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;,
+  &quot;quarantined&quot;: true
+}</code></pre></details><details class="ex"><summary>example: alwaysRedacted</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;ALWAYS_REDACTED_FIELD_PRESENT&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;,
+  &quot;quarantined&quot;: true,
+  &quot;violationPaths&quot;: [
+    &quot;ssn (always-redacted)&quot;
+  ]
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-400">400</div><div class="resp-body"><p>Malformed forwarded request. Codes: `INVALID_JSON` (empty/unparseable</p><p>body), `INVALID_NONCE` (forwarded nonce fails the pattern),</p><p>`INVALID_CONTENT_HASH` (forwarded hash not 64-hex), `PROCESSOR_TRANSFER_ID_MISMATCH`,</p><p>`PROCESSOR_CONTENT_HASH_MISMATCH` (recomputed hash differs). Bodies</p><p>follow the `rejectedWireShape` (four keys, null ids when the</p><p>envelope was not yet parsed); `PROCESSOR_TRANSFER_ID_MISMATCH` and</p><p>`PROCESSOR_CONTENT_HASH_MISMATCH` carry the real envelope ids.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorRejected">ProcessorRejected</a></div><details class="ex"><summary>example: invalidNonce</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;INVALID_NONCE&quot;,
+  &quot;transferId&quot;: null,
+  &quot;idempotencyKey&quot;: null
+}</code></pre></details><details class="ex"><summary>example: invalidJson</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;INVALID_JSON&quot;,
+  &quot;transferId&quot;: null,
+  &quot;idempotencyKey&quot;: null
+}</code></pre></details><details class="ex"><summary>example: processorContentHashMismatch</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PROCESSOR_CONTENT_HASH_MISMATCH&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-401">401</div><div class="resp-body"><p>Missing or invalid Bearer token.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: authFailed</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PROCESSOR_AUTH_FAILED&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-404">404</div><div class="resp-body"><p>Unknown processor route/method.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: notFound</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;NOT_FOUND&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-413">413</div><div class="resp-body"><p>Body exceeds 1,048,576 bytes.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: payloadTooLarge</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PAYLOAD_TOO_LARGE&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-422">422</div><div class="resp-body"><p>Forwarded schema version is not `arma-lawshield.v1`.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: schemaVersionUnsupported</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;SCHEMA_VERSION_UNSUPPORTED&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-500">500</div><div class="resp-body"><p>Persistence failure — the transaction rolled back, nothing persisted,</p><p>fail closed. Codes: `PROCESSOR_PERSISTENCE_FAILED` (including masked</p><p>test-only fault injections) or the known passthrough failures</p><p>`TRANSFER_ALREADY_PROCESSED`, `IDEMPOTENCY_RECEIPT_DIVERGENCE`.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorRejected">ProcessorRejected</a></div><details class="ex"><summary>example: persistenceFailed</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PROCESSOR_PERSISTENCE_FAILED&quot;,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-503">503</div><div class="resp-body"><p>Kill switch active (`PROCESSOR_DISABLED`) or processor fault (`PROCESSOR_UNAVAILABLE`).</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: processorDisabled</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PROCESSOR_DISABLED&quot;
+}</code></pre></details><details class="ex"><summary>example: processorUnavailable</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PROCESSOR_UNAVAILABLE&quot;,
+  &quot;transferId&quot;: null,
+  &quot;idempotencyKey&quot;: null
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-default">default</div><div class="resp-body"><p>Unexpected response (never a raw runtime message — masked to a structured code).</p></div></div>
+</div><div class="op" id="op-get-status">
+  <div class="op-head"><span class="method m-get">GET</span><span class="op-path mono">/status</span><div class="sec-badge">ProcessorBearer</div></div>
+  <div class="op-title"><code class="mono opid">getTransferStatus</code> — Query durable transfer status for reconciliation (service-to-service). <span class="tag">Durable Processor</span></div>
+  <p>Reconciliation inquiry over the ACTUAL durable upstream state — used by</p><p>ARMA after an ambiguous outcome (timeout, receipt mismatch, lost response)</p><p>instead of guessing. Lookup by `transferId` and/or `idempotencyKey`.</p><p>Quarantined state is exposed for human review.</p><p>The kill switch is checked FIRST — nothing (not even status) is served</p><p>while the processor is disabled.</p>
+  <h4>Parameters</h4><table class="tbl"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td class="mono">Authorization</td><td>header</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^Bearer .+$</span></td><td><span class="req">required</span></td><td>Bearer token for the processor (service-to-service).</td></tr><tr><td class="mono">transferId</td><td>query</td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td><span class="opt">optional</span></td><td>Durable transfer id to look up.</td></tr><tr><td class="mono">idempotencyKey</td><td>query</td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td><span class="opt">optional</span></td><td>Idempotency key to look up (used with `schemaVersion`).</td></tr><tr><td class="mono">schemaVersion</td><td>query</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td><span class="opt">optional</span></td><td>Defaults to `arma-lawshield.v1`.</td></tr></tbody></table>
+  
+  <h4>Responses</h4><div class="resp"><div class="resp-code code-200">200</div><div class="resp-body"><p>Durable status found. `status` is one of `ACCEPTED`, `REJECTED`,</p><p>`QUARANTINED`. Audit events are scrubbed to structural fields only</p><p>(no `detail` — payload content can never appear here).</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-StatusResponse">StatusResponse</a></div><details class="ex"><summary>example: accepted</summary><pre class="example"><code>{
+  &quot;found&quot;: true,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;,
+  &quot;schemaVersion&quot;: &quot;arma-lawshield.v1&quot;,
+  &quot;status&quot;: &quot;ACCEPTED&quot;,
+  &quot;receiptId&quot;: &quot;RCP-TRX- Proc0001&quot;,
+  &quot;acceptedAt&quot;: 1760000002000,
+  &quot;quarantinedAt&quot;: null,
+  &quot;rejectedAt&quot;: null,
+  &quot;lastErrorCode&quot;: null,
+  &quot;payloadHash&quot;: &quot;3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe&quot;,
+  &quot;armaOrgId&quot;: &quot;org-arma-1&quot;,
+  &quot;lawShieldOrgId&quot;: &quot;ls-org-1&quot;,
+  &quot;incidentId&quot;: &quot;INC-1001&quot;,
+  &quot;lawShieldCaseId&quot;: &quot;LS-CASE-1&quot;,
+  &quot;recordType&quot;: &quot;CASE_REFERRAL&quot;,
+  &quot;recordId&quot;: &quot;rec-0001&quot;,
+  &quot;idempotency&quot;: {
+    &quot;outcome&quot;: &quot;ACCEPTED&quot;,
+    &quot;receiptId&quot;: &quot;RCP-TRX-0001&quot;,
+    &quot;acceptedAt&quot;: 1760000002000,
+    &quot;errorCode&quot;: null
+  },
+  &quot;receipt&quot;: {
+    &quot;receiptId&quot;: &quot;RCP-TRX-0001&quot;,
+    &quot;acceptedAt&quot;: 1760000002000,
+    &quot;processingResult&quot;: &quot;PERSISTED&quot;,
+    &quot;payloadHash&quot;: &quot;3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe&quot;
+  },
+  &quot;auditEvents&quot;: [
+    {
+      &quot;auditSequence&quot;: 1,
+      &quot;eventType&quot;: &quot;TRANSFER_ACCEPTED&quot;,
+      &quot;actorType&quot;: &quot;PROCESSOR&quot;,
+      &quot;source&quot;: &quot;PROCESSOR_DECISION&quot;,
+      &quot;outcome&quot;: &quot;ACCEPTED&quot;,
+      &quot;createdAt&quot;: 1760000002000
+    }
+  ],
+  &quot;auditEventCount&quot;: 1
+}</code></pre></details><details class="ex"><summary>example: quarantined</summary><pre class="example"><code>{
+  &quot;found&quot;: true,
+  &quot;transferId&quot;: &quot;TRX-0001&quot;,
+  &quot;idempotencyKey&quot;: &quot;IDK-0001&quot;,
+  &quot;schemaVersion&quot;: &quot;arma-lawshield.v1&quot;,
+  &quot;status&quot;: &quot;QUARANTINED&quot;,
+  &quot;receiptId&quot;: null,
+  &quot;acceptedAt&quot;: null,
+  &quot;quarantinedAt&quot;: 1760000002000,
+  &quot;rejectedAt&quot;: null,
+  &quot;lastErrorCode&quot;: &quot;ALWAYS_REDACTED_FIELD_PRESENT&quot;,
+  &quot;payloadHash&quot;: &quot;3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe&quot;,
+  &quot;armaOrgId&quot;: &quot;org-arma-1&quot;,
+  &quot;lawShieldOrgId&quot;: &quot;ls-org-1&quot;,
+  &quot;incidentId&quot;: &quot;INC-1001&quot;,
+  &quot;lawShieldCaseId&quot;: &quot;LS-CASE-1&quot;,
+  &quot;recordType&quot;: &quot;CASE_REFERRAL&quot;,
+  &quot;recordId&quot;: &quot;rec-0001&quot;,
+  &quot;idempotency&quot;: {
+    &quot;outcome&quot;: &quot;QUARANTINED&quot;,
+    &quot;receiptId&quot;: null,
+    &quot;acceptedAt&quot;: null,
+    &quot;errorCode&quot;: &quot;ALWAYS_REDACTED_FIELD_PRESENT&quot;
+  },
+  &quot;receipt&quot;: null,
+  &quot;auditEvents&quot;: [
+    {
+      &quot;auditSequence&quot;: 1,
+      &quot;eventType&quot;: &quot;TRANSFER_QUARANTINED&quot;,
+      &quot;actorType&quot;: &quot;PROCESSOR&quot;,
+      &quot;source&quot;: &quot;PROCESSOR_DECISION&quot;,
+      &quot;outcome&quot;: &quot;QUARANTINED&quot;,
+      &quot;createdAt&quot;: 1760000002000
+    }
+  ],
+  &quot;auditEventCount&quot;: 1
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-400">400</div><div class="resp-body"><p>Neither `transferId` nor `idempotencyKey` provided.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: criteriaRequired</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;STATUS_LOOKUP_CRITERIA_REQUIRED&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-401">401</div><div class="resp-body"><p>Missing or invalid Bearer token.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: authFailed</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PROCESSOR_AUTH_FAILED&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-404">404</div><div class="resp-body"><p>No durable record for the given lookup — never a guess.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-StatusNotFound">StatusNotFound</a></div><details class="ex"><summary>example: transferNotFoundByTransferId</summary><pre class="example"><code>{
+  &quot;found&quot;: false,
+  &quot;transferId&quot;: &quot;TRX-UNKNOWN&quot;,
+  &quot;idempotencyKey&quot;: null,
+  &quot;error&quot;: &quot;TRANSFER_NOT_FOUND&quot;
+}</code></pre></details><details class="ex"><summary>example: transferNotFoundByIdempotencyKey</summary><pre class="example"><code>{
+  &quot;found&quot;: false,
+  &quot;transferId&quot;: null,
+  &quot;idempotencyKey&quot;: &quot;IDK-UNKNOWN&quot;,
+  &quot;error&quot;: &quot;TRANSFER_NOT_FOUND&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-422">422</div><div class="resp-body"><p>`schemaVersion` parameter is not `arma-lawshield.v1`.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: schemaVersionUnsupported</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;SCHEMA_VERSION_UNSUPPORTED&quot;
+}</code></pre></details></div></div><div class="resp"><div class="resp-code code-503">503</div><div class="resp-body"><p>Kill switch active (`PROCESSOR_DISABLED`) or processor fault.</p><div class="resp-media"><span class="lbl">application/json</span> <a class="t-ref" href="#schema-ProcessorError">ProcessorError</a></div><details class="ex"><summary>example: processorDisabled</summary><pre class="example"><code>{
+  &quot;accepted&quot;: false,
+  &quot;error&quot;: &quot;PROCESSOR_DISABLED&quot;
+}</code></pre></details></div></div>
+</div>
+<h2>Security Schemes</h2><div class="scheme"><h3 class="schema-name">ArmaSignedRequest</h3><div class="kv"><span class="lbl">type</span> apiKey</div><p>HMAC-SHA256 request-signing scheme over the five required `x-arma-*`</p><p>headers. The signature is computed over the 4-field canonical string:</p><p>  `schemaVersion + &quot;\n&quot; + timestamp + &quot;\n&quot; + nonce + &quot;\n&quot; + bodyHash`</p><p>where `bodyHash` is the lowercase-hex sha256 of the RAW request body</p><p>bytes, `timestamp` and `nonce` are the EXACT header values, and</p><p>`schemaVersion` is `arma-lawshield.v1`. Both the `x-arma-content-sha256`</p><p>header and the canonical `bodyHash` term are sha256-hex of the same raw</p><p>bytes. A bodyless request has no representation in this protocol (the</p><p>single route is a POST with a required body).</p><div class="kv"><span class="lbl">header</span> <code class="mono">x-arma-signature</code></div></div><div class="scheme"><h3 class="schema-name">ProcessorBearer</h3><div class="kv"><span class="lbl">type</span> http</div><p>Service-to-service Bearer token for the durable processor routes. The</p><p>gateway presents it when forwarding to `POST /process`; ARMA</p><p>reconciliation presents it for `GET /status`. Missing or invalid token</p><p>fails closed with `PROCESSOR_AUTH_FAILED`.</p><p>Bearer authentication is ADDITIVE to — never a replacement for — the</p><p>forwarded-context re-validation, canonical envelope re-validation, and</p><p>business-policy enforcement the processor performs on every request.</p><div class="kv"><span class="lbl">scheme</span> bearer</div></div>
+<h2>Response Headers</h2><table class="tbl"><thead><tr><th>Header</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">LawShieldContentSha256</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td>sha256 (lowercase hex) of the EXACT serialized receipt bytes.</td></tr><tr><td class="mono">LawShieldSignature</td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td>HMAC-SHA256 (lowercase hex) over the EXACT serialized receipt bytes.</td></tr><tr><td class="mono">LawShieldSchemaVersion</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td>Receipt schema version (`arma-lawshield.v1`).</td></tr><tr><td class="mono">LawShieldReceiptId</td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td>The receipt id (matches the body&#39;s `receiptId`).</td></tr><tr><td class="mono">ContentTypeHeader</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;application/json&quot;</span></td><td>Response media type.</td></tr><tr><td class="mono">CacheControlHeader</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-store&quot;</span></td><td>No-store on every response.</td></tr><tr><td class="mono">XContentTypeOptionsHeader</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;nosniff&quot;</span></td><td>nosniff on every response.</td></tr><tr><td class="mono">ReferrerPolicyHeader</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;no-referrer&quot;</span></td><td>no-referrer on every response.</td></tr><tr><td class="mono">XFrameOptionsHeader</td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;DENY&quot;</span></td><td>DENY on every response.</td></tr></tbody></table>
+<h2>Schemas</h2><div class="schema" id="schema-TransferEnvelope"><h3 class="schema-name">TransferEnvelope</h3><p>The ARMA→Law Shield transfer envelope for protocol `arma-lawshield.v1`.</p><p>All 11 required string fields must be non-empty; `mapping` must be</p><p>present and consistent; timestamps must satisfy `createdAt ≤ sentAt &lt; expiresAt`</p><p>with `expiresAt` in the future; `payloadHash` must equal sha256 of</p><p>`JSON.stringify(payload)` exactly; `authorizedBy` must not be an AI actor.</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">schemaVersion</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td></td></tr><tr><td class="mono">transferId</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td>Unique transfer id (e.g. `TRX-0001`).</td></tr><tr><td class="mono">idempotencyKey</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td>Idempotency key; same key + same content collapses to the same receipt; different content is a quarantined integrity conflict.</td></tr><tr><td class="mono">sourceSystem</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;ARMA_360&quot;</span></td><td></td></tr><tr><td class="mono">destinationSystem</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;LAW_SHIELD&quot;</span></td><td></td></tr><tr><td class="mono">armaOrgId</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td></td></tr><tr><td class="mono">lawShieldOrgId</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td></td></tr><tr><td class="mono">recordType</td><td><span class="req">required</span></td><td><a class="t-ref" href="#schema-RecordType">RecordType</a></td><td></td></tr><tr><td class="mono">recordId</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td></td></tr><tr><td class="mono">authorizedBy</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td>HUMAN user id only. Values beginning `AI:` or the exact names `AI`,</p><p>`JOY`, `ROSE` (and `authorizationMode: &#39;AI&#39;` where present) are</p><p>rejected with `AI_CANNOT_AUTHORIZE_TRANSFER`.</td></tr><tr><td class="mono">authorizationMode</td><td><span class="opt">optional</span></td><td><span class="t-string">string</span> <span class="t-meta">enum: &quot;HUMAN&quot;</span></td><td>Optional; MUST NOT be `AI` (same human-only rule).</td></tr><tr><td class="mono">authorizationReason</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">minLength 1</span></td><td></td></tr><tr><td class="mono">mapping</td><td><span class="req">required</span></td><td><span class="t-object">object</span></td><td>Explicit ARMA↔Law Shield org mapping; must match the envelope&#39;s</p><p>`armaOrgId`/`lawShieldOrgId`. When `incidentId` is present,</p><p>`lawShieldCaseId` is required.</td></tr><tr><td class="mono">incidentId</td><td><span class="opt">optional</span></td><td><span class="t-string">string</span></td><td>Optional; presence requires a mapped `lawShieldCaseId`.</td></tr><tr><td class="mono">disclosurePurpose</td><td><span class="opt">optional</span></td><td><span class="t-string">string</span></td><td>Optional disclosure purpose.</td></tr><tr><td class="mono">createdAt</td><td><span class="req">required</span></td><td><span class="t-number">number</span></td><td>Epoch ms; `sentAt` must be ≥ `createdAt`.</td></tr><tr><td class="mono">sentAt</td><td><span class="req">required</span></td><td><span class="t-number">number</span></td><td>Epoch ms; must be within the nonce validity window (10 min) of processor time.</td></tr><tr><td class="mono">expiresAt</td><td><span class="req">required</span></td><td><span class="t-number">number</span></td><td>Epoch ms; must be in the future (`TRANSFER_EXPIRED` otherwise).</td></tr><tr><td class="mono">payload</td><td><span class="req">required</span></td><td><span class="t-object">object</span> <span class="t-meta">(free-form)</span></td><td>The FLAT minimum-necessary redacted payload (redactor output is the</p><p>envelope payload — no wrapper). Free-form JSON object bounded by:</p><p>max nesting depth 20 (`PAYLOAD_STRUCTURE_TOO_DEEP`), no</p><p>executable/AI-instruction keys anywhere (`AI_OR_EXECUTABLE_INSTRUCTION_BLOCKED`),</p><p>and processor-side per-record-type allow-lists</p><p>(`MINIMUM_NECESSARY_VIOLATION` / `ALWAYS_REDACTED_FIELD_PRESENT`).</td></tr><tr><td class="mono">payloadHash</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td>sha256 of `JSON.stringify(payload)` — byte-exact, key order matters.</td></tr></tbody></table></div><div class="schema" id="schema-RecordType"><h3 class="schema-name">RecordType</h3><p>The seven allowed record types for `arma-lawshield.v1`.</p></div><div class="schema" id="schema-LawShieldReceipt"><h3 class="schema-name">LawShieldReceipt</h3><p>The success receipt — 15 fields, D1-additive `accepted: true` alongside</p><p>the v1 `status: &quot;ACCEPTED&quot;`. The gateway signs the EXACT serialized</p><p>receipt bytes; verify raw, never re-serialize.</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">schemaVersion</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td></td></tr><tr><td class="mono">receiptId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td>Pattern `RCP-&lt;transferId&gt;` in the reference implementation.</td></tr><tr><td class="mono">transferId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">idempotencyKey</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">status</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;ACCEPTED&quot;</span></td><td></td></tr><tr><td class="mono">accepted</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: true</span></td><td></td></tr><tr><td class="mono">acceptedAt</td><td><span class="req">required</span></td><td><span class="t-number">number</span></td><td>Epoch ms.</td></tr><tr><td class="mono">armaOrgId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">lawShieldOrgId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">incidentId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td>The envelope&#39;s incidentId, or null.</td></tr><tr><td class="mono">lawShieldCaseId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td>The mapping&#39;s case id, or null.</td></tr><tr><td class="mono">recordType</td><td><span class="req">required</span></td><td><a class="t-ref" href="#schema-RecordType">RecordType</a></td><td></td></tr><tr><td class="mono">recordId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">receivedPayloadHash</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td></td></tr><tr><td class="mono">processingResult</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">enum: &quot;PERSISTED&quot;</span></td><td>Default `PERSISTED` when the processor does not report one.</td></tr></tbody></table></div><div class="schema" id="schema-GatewayError"><h3 class="schema-name">GatewayError</h3><p>Gateway error body. `transferId` is `null` for every failure raised</p><p>BEFORE the verified envelope is read (kill switch, signing-secret and</p><p>receipt-secret configuration, payload size, missing security headers,</p><p>unsupported schema version, invalid nonce, stale/future timestamp,</p><p>body-hash mismatch, invalid signature, malformed/non-JSON body, and all</p><p>envelope-validation failures — INVALID_FIELD_*, INVALID_SYSTEM_ROUTE,</p><p>AI denial, MAPPING_REQUIRED, ORG/CASE mapping mismatches,</p><p>INVALID_TIMESTAMPS, TRANSFER_EXPIRED, INVALID_TIME_ORDER,</p><p>PAYLOAD_REQUIRED, PAYLOAD_HASH_MISMATCH, injection screen,</p><p>PAYLOAD_STRUCTURE_TOO_DEEP, RECORD_TYPE_NOT_ALLOWED, SCHEMA_VERSION_UNSUPPORTED</p><p>body value). It carries the envelope&#39;s real `transferId` only for</p><p>`REPLAYED_NONCE` (thrown after verification), the post-verification</p><p>processor-configuration check (`INTEGRATION_PROCESSOR_NOT_CONFIGURED`),</p><p>and all processor-outcome passthroughs. Optional discriminators:</p><p>`retryable` (PROCESSOR_TIMEOUT / PROCESSOR_UNAVAILABLE transport codes),</p><p>`reconciliationRequired` (PROCESSOR_RECEIPT_MISMATCH), `processorStatus`</p><p>(processor business-rejection passthrough).</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">error</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td>Structured error code (never a raw runtime message).</td></tr><tr><td class="mono">transferId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">accepted</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: false</span></td><td></td></tr><tr><td class="mono">retryable</td><td><span class="opt">optional</span></td><td><span class="t-boolean">boolean</span></td><td>Present (true) on PROCESSOR_TIMEOUT / PROCESSOR_UNAVAILABLE.</td></tr><tr><td class="mono">reconciliationRequired</td><td><span class="opt">optional</span></td><td><span class="t-boolean">boolean</span></td><td>Present (true) on PROCESSOR_RECEIPT_MISMATCH.</td></tr><tr><td class="mono">processorStatus</td><td><span class="opt">optional</span></td><td><span class="t-number">number</span></td><td>Processor HTTP status, present on processor business-rejection passthrough.</td></tr></tbody></table></div><div class="schema" id="schema-GatewayErrorNoTransferId"><h3 class="schema-name">GatewayErrorNoTransferId</h3><p>Gateway error body for method/content-type checks (no transferId key at all).</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">error</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">accepted</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: false</span></td><td></td></tr></tbody></table></div><div class="schema" id="schema-IntegrationReadiness"><h3 class="schema-name">IntegrationReadiness</h3><p>Readiness probe response (200 ready, 503 not-ready).</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">service</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;law-shield-arma-integration&quot;</span></td><td></td></tr><tr><td class="mono">ready</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span></td><td></td></tr><tr><td class="mono">schemaVersion</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td></td></tr><tr><td class="mono">gatewayConfigured</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span></td><td></td></tr><tr><td class="mono">receiptSigningConfigured</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span></td><td></td></tr><tr><td class="mono">processorConfigured</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span></td><td></td></tr><tr><td class="mono">killSwitchActive</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span></td><td></td></tr><tr><td class="mono">maxBodyBytes</td><td><span class="req">required</span></td><td><span class="t-integer">integer</span> <span class="t-meta">const: 1048576</span></td><td></td></tr><tr><td class="mono">maxClockSkewMs</td><td><span class="req">required</span></td><td><span class="t-integer">integer</span> <span class="t-meta">const: 300000</span></td><td></td></tr><tr><td class="mono">allowedRecordTypes</td><td><span class="req">required</span></td><td><span class="t-array">array&lt;<a class="t-ref" href="#schema-RecordType">RecordType</a>&gt;</span></td><td></td></tr><tr><td class="mono">checkedAt</td><td><span class="req">required</span></td><td><span class="t-number">number</span></td><td></td></tr></tbody></table></div><div class="schema" id="schema-ProcessorAccepted"><h3 class="schema-name">ProcessorAccepted</h3><p>Processor acceptance wire shape — 6 fields. The gateway validates this</p><p>(accepted:true + receiptId + transferId/payloadHash consistency) before</p><p>constructing the 15-field partner receipt.</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">accepted</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: true</span></td><td></td></tr><tr><td class="mono">receiptId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">transferId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">acceptedAt</td><td><span class="req">required</span></td><td><span class="t-number">number</span></td><td></td></tr><tr><td class="mono">processingResult</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">enum: &quot;PERSISTED&quot;</span></td><td></td></tr><tr><td class="mono">payloadHash</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td></td></tr></tbody></table></div><div class="schema" id="schema-ProcessorRejected"><h3 class="schema-name">ProcessorRejected</h3><p>Processor business-rejection body (`rejectedWireShape`), returned with</p><p>HTTP 200 on in-band rejections, and 500 on persistence failures.</p><p>`transferId` / `idempotencyKey` are non-null when the envelope was</p><p>parsed (real ids), null for pre-envelope validation failures.</p><p>`quarantined: true` + `violationPaths` (field NAMES only, never</p><p>content) on the policy/integrity quarantine codes.</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">accepted</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: false</span></td><td></td></tr><tr><td class="mono">error</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td>Structured processor error code.</td></tr><tr><td class="mono">transferId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">idempotencyKey</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">quarantined</td><td><span class="opt">optional</span></td><td><span class="t-boolean">boolean</span></td><td>True on MINIMUM_NECESSARY_VIOLATION, ALWAYS_REDACTED_FIELD_PRESENT, IDEMPOTENCY_KEY_CONFLICT.</td></tr><tr><td class="mono">violationPaths</td><td><span class="opt">optional</span></td><td><span class="t-array">array&lt;<span class="t-string">string</span>&gt;</span></td><td>Field NAMES only — payload content can never appear here.</td></tr></tbody></table></div><div class="schema" id="schema-ProcessorError"><h3 class="schema-name">ProcessorError</h3><p>Processor handler-level error body for requests refused before</p><p>envelope parsing (Bearer auth, kill switch, lookup criteria, route</p><p>fallback): exactly `accepted: false` + `error`, with the exception of</p><p>the transport-fault 503 PROCESSOR_UNAVAILABLE which additionally</p><p>carries `transferId: null` + `idempotencyKey: null`.</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">accepted</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: false</span></td><td></td></tr><tr><td class="mono">error</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td>Structured processor error code.</td></tr><tr><td class="mono">transferId</td><td><span class="opt">optional</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">idempotencyKey</td><td><span class="opt">optional</span></td><td><span class="t-union">string | null</span></td><td></td></tr></tbody></table></div><div class="schema" id="schema-StatusResponse"><h3 class="schema-name">StatusResponse</h3><p>Durable transfer status (200). Audit events are scrubbed — structural</p><p>fields only, no `detail` (payload content can never appear).</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">found</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: true</span></td><td></td></tr><tr><td class="mono">transferId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">idempotencyKey</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">schemaVersion</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;arma-lawshield.v1&quot;</span></td><td></td></tr><tr><td class="mono">status</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">enum: &quot;ACCEPTED&quot; | &quot;REJECTED&quot; | &quot;QUARANTINED&quot;</span></td><td></td></tr><tr><td class="mono">receiptId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">acceptedAt</td><td><span class="req">required</span></td><td><span class="t-union">number | null</span></td><td></td></tr><tr><td class="mono">quarantinedAt</td><td><span class="req">required</span></td><td><span class="t-union">number | null</span></td><td></td></tr><tr><td class="mono">rejectedAt</td><td><span class="req">required</span></td><td><span class="t-union">number | null</span></td><td></td></tr><tr><td class="mono">lastErrorCode</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">payloadHash</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">pattern: ^[a-f0-9]{64}$</span></td><td></td></tr><tr><td class="mono">armaOrgId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">lawShieldOrgId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">incidentId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">lawShieldCaseId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">recordType</td><td><span class="req">required</span></td><td><a class="t-ref" href="#schema-RecordType">RecordType</a></td><td></td></tr><tr><td class="mono">recordId</td><td><span class="req">required</span></td><td><span class="t-string">string</span></td><td></td></tr><tr><td class="mono">idempotency</td><td><span class="req">required</span></td><td> <span class="t-meta">oneOf [ <span class="t-null">null</span> , <span class="t-object">object</span> ]</span></td><td></td></tr><tr><td class="mono">receipt</td><td><span class="req">required</span></td><td> <span class="t-meta">oneOf [ <span class="t-null">null</span> , <span class="t-object">object</span> ]</span></td><td></td></tr><tr><td class="mono">auditEvents</td><td><span class="req">required</span></td><td><span class="t-array">array&lt;<span class="t-object">object</span>&gt;</span></td><td></td></tr><tr><td class="mono">auditEventCount</td><td><span class="req">required</span></td><td><span class="t-integer">integer</span></td><td></td></tr></tbody></table></div><div class="schema" id="schema-StatusNotFound"><h3 class="schema-name">StatusNotFound</h3><p>404 body from the durable status lookup when no durable record exists</p><p>for the provided transferId or idempotencyKey. Distinct from the</p><p>ProcessorRejected wire shape: it carries no `accepted` key, and each</p><p>lookup criterion echoes back the value that was searched (null when the</p><p>other criterion was used).</p><table class="tbl"><thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td class="mono">found</td><td><span class="req">required</span></td><td><span class="t-boolean">boolean</span> <span class="t-meta">const: false</span></td><td></td></tr><tr><td class="mono">transferId</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">idempotencyKey</td><td><span class="req">required</span></td><td><span class="t-union">string | null</span></td><td></td></tr><tr><td class="mono">error</td><td><span class="req">required</span></td><td><span class="t-string">string</span> <span class="t-meta">const: &quot;TRANSFER_NOT_FOUND&quot;</span></td><td></td></tr></tbody></table></div>
+<footer>
+  <p>Generated by <code class="mono">scripts/render-openapi-docs.mjs</code> from <code class="mono">law-shield/openapi/arma-lawshield-v1.yaml</code> — static in-repo rendering, no external service. Do not edit the HTML directly; edit the OpenAPI document and re-render.</p>
+</footer>
+</div>
+</body>
+</html>

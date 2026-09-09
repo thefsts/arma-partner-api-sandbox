@@ -9,17 +9,20 @@
   },
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "test": "node --test \"law-shield/tests/**/*.test.mjs\" \"patches/tests/**/*.test.mjs\" \"ai-governance/tests/**/*.test.mjs\" \"shared/tests/**/*.test.mjs\" \"simulators/tests/**/*.test.mjs\"",
+    "test": "node --test \"law-shield/tests/**/*.test.mjs\" \"patches/tests/**/*.test.mjs\" \"ai-governance/tests/**/*.test.mjs\" \"shared/tests/**/*.test.mjs\" \"simulators/tests/**/*.test.mjs\" \"openapi/tests/**/*.test.mjs\"",
     "test:lawshield": "node --test \"law-shield/tests/**/*.test.mjs\"",
     "test:aigov": "node --test \"ai-governance/tests/**/*.test.mjs\"",
+    "test:openapi": "node --test \"openapi/tests/**/*.test.mjs\"",
     "typecheck": "tsc -p tsconfig.json",
     "test:patches": "node --test \"patches/tests/**/*.test.mjs\"",
     "test:shared": "node --test \"shared/tests/**/*.test.mjs\"",
-    "test:simulators": "node --test \"simulators/tests/**/*.test.mjs\""
+    "test:simulators": "node --test \"simulators/tests/**/*.test.mjs\"",
+    "render:openapi-docs": "node scripts/render-openapi-docs.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "convex": "^1.25.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "yaml": "^2.9.0"
   }
 }

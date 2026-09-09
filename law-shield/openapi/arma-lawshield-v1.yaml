@@ -1,0 +1,1476 @@
+# ARMA Law Shield API v1 — OpenAPI 3.1 contract
+#
+# Grounded 100% in the reference implementation at repo baseline 465a3ae:
+#   law-shield/lawshield/_integrationSecurity.js  (verification + envelope rules)
+#   law-shield/lawshield/arma-integration.js      (gateway)
+#   law-shield/lawshield/integration-readiness.js (readiness)
+#   law-shield/lawshield/durable/processor.js     (durable processor: /process, /status)
+#   law-shield/lawshield/durable/store.js         (nonce/idempotency windows)
+#   law-shield/arma/redaction.js                  (minimum-necessary allow-lists — processor-enforced)
+# Exercised by the 71-test law-shield matrix (gateway.security 30, processor.durable 22,
+# arma.transfer 14, contract.compat 4, e2e.synthetic 1) in CI.
+#
+# Nothing here is invented: every operation, header, field, status code, and error
+# code exists in the sources above. Internal-only material (synthetic test secrets,
+# fail-point injection, private deployment details) is intentionally excluded.
+openapi: 3.1.0
+info:
+  title: ARMA Law Shield API
+  version: 1.0.0
+  summary: Inbound ARMA→Law Shield disclosure transfer gateway, durable processing, and reconciliation status.
+  description: |
+    Wire contract for protocol `arma-lawshield.v1`.
+
+    Scope — exactly the implemented v1 surface:
+      * `POST /api/lawshield/arma` — the Law Shield inbound gateway (verifies the
+        ARMA-signed envelope end-to-end, then forwards to the durable processor
+        and returns a signed receipt on acceptance).
+      * `GET /api/lawshield/integration-readiness` — unauthenticated readiness probe.
+      * `POST /process` and `GET /status` — the durable processor's
+        service-to-service routes (Bearer auth). The gateway calls `POST /process`
+        after verification; ARMA reconciliation calls `GET /status`.
+
+    Two security models, both cumulative with the other checks:
+      * Partner-facing (gateway + readiness): HMAC-SHA256 request signing over
+        the 4-field canonical string with the five `x-arma-*` headers. Signature
+        verification NEVER replaces tenant (org/case mapping), entitlement
+        (record-type allow-list + disclosure policy), or human-authorization
+        checks — every layer is enforced.
+      * Service-to-service (processor): Bearer token + gateway-forwarded
+        verified-context headers + full defense-in-depth re-validation.
+
+    Behavioral invariants (all fail-closed):
+      * Every error body is `{ error, transferId, accepted: false }` (gateway) or
+        `{ accepted: false, error, ... }` (processor) — raw runtime messages are
+        never echoed; unknown codes surface as the generic `INTEGRATION_REJECTED`
+        (gateway) or `PROCESSOR_PERSISTENCE_FAILED` (processor).
+      * Nonce single-use (gateway replay guard + authoritative processor nonce
+        registry) with a 10-minute validity window; timestamps must be within
+        ±5 minutes.
+      * Idempotency: same key + same content collapses to the SAME deterministic
+        receipt (no second disclosure); same key + different content is an
+        integrity conflict, quarantined, never accepted.
+      * Durable writes (nonce + idempotency + transfer + receipt + audit) commit
+        in ONE transaction — partial outcomes cannot exist.
+      * Success receipts are signed over the EXACT serialized receipt bytes
+        (verify raw, never re-serialize).
+      * AI actors can never authorize a transfer (blocked at the gateway AND at
+        the processor).
+      * Minimum-necessary disclosure policy is enforced processor-side on the
+        flat redacted payload; the gateway enforces signature/hash/injection
+        screens only.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+
+servers:
+  - url: '{protocol}://{gatewayHost}'
+    description: Law Shield gateway (partner-facing routes)
+    variables:
+      protocol:
+        default: https
+        enum: [https, http]
+      gatewayHost:
+        default: lawshield.example.invalid
+  - url: '{protocol}://{processorHost}'
+    description: Law Shield durable processor (service-to-service routes; Bearer auth)
+    variables:
+      protocol:
+        default: https
+        enum: [https, http]
+      processorHost:
+        default: processor.internal.invalid
+
+security:
+  - ArmaSignedRequest: []
+
+tags:
+  - name: Inbound Transfer Gateway
+    description: The ARMA→Law Shield disclosure transfer endpoint and readiness probe.
+  - name: Durable Processor
+    description: Service-to-service processing and reconciliation-status routes behind the gateway.
+
+paths:
+  /api/lawshield/arma:
+    post:
+      operationId: submitTransfer
+      tags: [Inbound Transfer Gateway]
+      summary: Submit an ARMA→Law Shield disclosure transfer.
+      description: |
+        The single inbound route for `arma-lawshield.v1` transfers.
+
+        Cumulative security controls, in enforcement order (all must pass — none
+        replaces any other):
+          1. Method — POST only (else 405 `METHOD_NOT_ALLOWED` with `Allow: POST`).
+          2. Content type — must start with `application/json` (else 415 `CONTENT_TYPE_NOT_ALLOWED`).
+          3. Kill switch — `LAW_SHIELD_ARMA_INTEGRATION_DISABLED` (else 503 `INTEGRATION_DISABLED`).
+          4. Signing secret configured (else 503 `INTEGRATION_NOT_CONFIGURED`).
+          5. Body size ≤ 1,048,576 bytes (else 413 `PAYLOAD_TOO_LARGE`).
+          6. All five `x-arma-*` headers present (else 401 `MISSING_SECURITY_HEADERS`).
+          7. Schema version — header must equal `arma-lawshield.v1` (else 422 `SCHEMA_VERSION_UNSUPPORTED`).
+          8. Nonce format — `[A-Za-z0-9_-]{20,128}` (else 400 `INVALID_NONCE`).
+          9. Timestamp freshness — ±5 minutes of server time (else 409 `STALE_OR_FUTURE_REQUEST`).
+         10. Body hash — `x-arma-content-sha256` must equal sha256 of the raw request bytes (else 401 `BODY_HASH_MISMATCH`).
+         11. HMAC signature over the 4-field canonical string (else 401 `INVALID_SIGNATURE`).
+         12. Body parses as JSON (else 400 `INVALID_JSON`).
+         13. Envelope validation — required fields, system route, record type,
+             human-only authorization, org/case mapping, timestamps/expiry,
+             payload hash, injection screening (codes below).
+         14. First-layer nonce replay guard (else 409 `REPLAYED_NONCE`).
+         15. Processor configured (else 503 `INTEGRATION_PROCESSOR_NOT_CONFIGURED`);
+             transport failures are structured 502s; processor outcomes are
+             reconciled and receipt-verified before a 200 is returned.
+
+        Order-of-evaluation notes (verified from the implementation):
+          * `transferId` is `null` in error bodies for all failures before the
+            envelope's `transferId` is read (steps 1–11); it carries the real
+            transfer id from step 12 onward.
+          * `REPLAYED_NONCE` (gateway layer) is thrown AFTER verification, so its
+            error body carries the real `transferId`.
+          * Every error body carries `accepted: false`. Error bodies never carry
+            `status: "ACCEPTED"`.
+
+        On success (200) the response body IS the receipt (15 fields) and is
+        signed over its exact serialized bytes — see the `X-LawShield-*` response
+        headers.
+      security:
+        - ArmaSignedRequest: []
+      parameters:
+        - $ref: '#/components/parameters/ArmaSchemaVersion'
+        - $ref: '#/components/parameters/ArmaTimestamp'
+        - $ref: '#/components/parameters/ArmaNonce'
+        - $ref: '#/components/parameters/ArmaContentSha256'
+        - $ref: '#/components/parameters/ArmaSignature'
+        - $ref: '#/components/parameters/ContentType'
+      requestBody:
+        required: true
+        description: |
+          The signed ARMA transfer envelope: 17 required fields, minimum-necessary
+          redacted payload, payloadHash over the canonical JSON serialization.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferEnvelope'
+            examples:
+              caseReferral:
+                summary: Case referral (CASE_REFERRAL)
+                description: A minimum-necessary redacted CASE_REFERRAL payload, signed by ARMA.
+                value:
+                  schemaVersion: arma-lawshield.v1
+                  transferId: TRX-0001
+                  idempotencyKey: IDK-0001
+                  sourceSystem: ARMA_360
+                  destinationSystem: LAW_SHIELD
+                  armaOrgId: org-arma-1
+                  lawShieldOrgId: ls-org-1
+                  recordType: CASE_REFERRAL
+                  recordId: rec-0001
+                  authorizedBy: user-77
+                  authorizationReason: Owner-approved synthetic test disclosure
+                  mapping:
+                    armaOrgId: org-arma-1
+                    lawShieldOrgId: ls-org-1
+                    lawShieldCaseId: LS-CASE-1
+                  incidentId: INC-1001
+                  createdAt: 1760000000000
+                  sentAt: 1760000001000
+                  expiresAt: 1760003601000
+                  payload:
+                    caseNumber: CASE-200
+                    incidentId: INC-1001
+                    summary: Synthetic incident referral requiring legal review by Law Shield
+                    legalNeeds: [LEGAL_REVIEW, RECORDS_REQUEST]
+                    incidentLocation: Synthetic Location 2
+                  payloadHash: 3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe
+      responses:
+        '200':
+          description: |
+            Accepted. The response body is the signed receipt. Duplicate delivery
+            (fresh nonce, same idempotency key + content) returns the SAME
+            deterministic receipt fields — no second disclosure is created.
+          headers:
+            X-LawShield-Content-SHA256:
+              $ref: '#/components/headers/LawShieldContentSha256'
+            X-LawShield-Signature:
+              $ref: '#/components/headers/LawShieldSignature'
+            X-LawShield-Schema-Version:
+              $ref: '#/components/headers/LawShieldSchemaVersion'
+            X-LawShield-Receipt-Id:
+              $ref: '#/components/headers/LawShieldReceiptId'
+            Content-Type:
+              $ref: '#/components/headers/ContentTypeHeader'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlHeader'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/XContentTypeOptionsHeader'
+            Referrer-Policy:
+              $ref: '#/components/headers/ReferrerPolicyHeader'
+            X-Frame-Options:
+              $ref: '#/components/headers/XFrameOptionsHeader'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LawShieldReceipt'
+              examples:
+                accepted:
+                  $ref: '#/components/examples/ReceiptAccepted'
+        '400':
+          description: |
+            Malformed request. `INVALID_JSON`, `INVALID_NONCE`, `INVALID_TIMESTAMPS`,
+            `INVALID_TIME_ORDER`, or `INVALID_FIELD_<Field>` for any of the 11
+            required non-empty string fields.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                invalidJson:
+                  $ref: '#/components/examples/GwInvalidJson'
+                invalidNonce:
+                  $ref: '#/components/examples/GwInvalidNonce'
+                invalidField:
+                  $ref: '#/components/examples/GwInvalidField'
+        '401':
+          description: |
+            Verification or authorization failure. Codes: `INVALID_SIGNATURE`,
+            `BODY_HASH_MISMATCH`, `PAYLOAD_HASH_MISMATCH`, `MISSING_SECURITY_HEADERS`,
+            `AI_CANNOT_AUTHORIZE_TRANSFER`, `AI_OR_EXECUTABLE_INSTRUCTION_BLOCKED`,
+            `MAPPING_REQUIRED`, `ORG_MAPPING_MISMATCH`, `CASE_MAPPING_REQUIRED`,
+            `INVALID_SYSTEM_ROUTE`, `PAYLOAD_REQUIRED`, `PAYLOAD_STRUCTURE_TOO_DEEP`,
+            and `INTEGRATION_REJECTED` (masked unknown).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                invalidSignature:
+                  $ref: '#/components/examples/GwInvalidSignature'
+                bodyHashMismatch:
+                  $ref: '#/components/examples/GwBodyHashMismatch'
+                aiCannotAuthorize:
+                  $ref: '#/components/examples/GwAiCannotAuthorize'
+        '405':
+          description: 'Method not allowed. POST only; carries `Allow: POST`.'
+          headers:
+            Allow:
+              description: Always `POST`.
+              schema: { type: string, const: POST }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayErrorNoTransferId' }
+              examples:
+                methodNotAllowed:
+                  value: { error: METHOD_NOT_ALLOWED, accepted: false }
+        '409':
+          description: |
+            Replay or expiry. Codes: `REPLAYED_NONCE` (real transferId present —
+            thrown after verification), `TRANSFER_EXPIRED`, `STALE_OR_FUTURE_REQUEST`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                replayedNonce:
+                  $ref: '#/components/examples/GwReplayedNonce'
+                transferExpired:
+                  value: { error: TRANSFER_EXPIRED, transferId: null, accepted: false }
+        '413':
+          description: Body exceeds 1,048,576 bytes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                payloadTooLarge:
+                  value: { error: PAYLOAD_TOO_LARGE, transferId: null, accepted: false }
+        '415':
+          description: Content type is not `application/json` (case-insensitive prefix match).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayErrorNoTransferId' }
+              examples:
+                contentTypeNotAllowed:
+                  value: { error: CONTENT_TYPE_NOT_ALLOWED, accepted: false }
+        '422':
+          description: |
+            Version or record type not supported. Codes:
+            `SCHEMA_VERSION_UNSUPPORTED` (header or body value), `RECORD_TYPE_NOT_ALLOWED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                schemaVersionUnsupported:
+                  $ref: '#/components/examples/GwSchemaVersionUnsupported'
+                recordTypeNotAllowed:
+                  $ref: '#/components/examples/GwRecordTypeNotAllowed'
+        '500':
+          description: |
+            Masked unknown error (raw runtime messages are never echoed).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                integrationRejected:
+                  value: { error: INTEGRATION_REJECTED, transferId: null, accepted: false }
+        '502':
+          description: |
+            Processor-side failure. Codes and discriminators:
+            * `PROCESSOR_TIMEOUT` — transport timeout; `retryable: true`.
+            * `PROCESSOR_UNAVAILABLE` — transport unreachable / non-JSON response
+              (`PROCESSOR_NON_JSON_RESPONSE`) / processor fault; `retryable: true` for the transport codes.
+            * `PROCESSOR_RECEIPT_MISMATCH` — ambiguous outcome; `reconciliationRequired: true`; never retry blind.
+            * Processor business rejection passthrough — the processor's own
+              `error` code (e.g. `ORG_NOT_AUTHORIZED`) with `processorStatus`;
+              processor-declared rejections surface as gateway 502.
+            * `PROCESSOR_REJECTED_TRANSFER` — fallback when the processor
+              rejects without a structured error code.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                processorTimeout:
+                  $ref: '#/components/examples/GwProcessorTimeout'
+                processorUnavailable:
+                  $ref: '#/components/examples/GwProcessorUnavailable'
+                processorReceiptMismatch:
+                  $ref: '#/components/examples/GwProcessorReceiptMismatch'
+                processorBusinessRejection:
+                  $ref: '#/components/examples/GwProcessorBusinessRejection'
+                processorRejectedFallback:
+                  value: { error: PROCESSOR_REJECTED_TRANSFER, transferId: TRX-0001, accepted: false, processorStatus: 200 }
+                processorNonJson:
+                  $ref: '#/components/examples/GwProcessorNonJson'
+        '503':
+          description: |
+            Disabled or unconfigured. Codes: `INTEGRATION_DISABLED` (kill switch),
+            `INTEGRATION_NOT_CONFIGURED` (missing signing secret), `RECEIPT_SIGNING_NOT_CONFIGURED`
+            (missing receipt secret), `INTEGRATION_PROCESSOR_NOT_CONFIGURED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayError' }
+              examples:
+                integrationDisabled:
+                  value: { error: INTEGRATION_DISABLED, transferId: null, accepted: false }
+                processorNotConfigured:
+                  value: { error: INTEGRATION_PROCESSOR_NOT_CONFIGURED, transferId: TRX-0001, accepted: false }
+        default:
+          description: Unexpected response (never a raw runtime message — masked to a structured code).
+
+  /api/lawshield/integration-readiness:
+    get:
+      operationId: getIntegrationReadiness
+      tags: [Inbound Transfer Gateway]
+      summary: Readiness probe for the Law Shield integration.
+      description: |
+        Unauthenticated readiness probe. Returns 200 when gateway + receipt signing
+        + processor are configured and the kill switch is off; 503 otherwise.
+        The `ready` boolean is the conjunction of `gatewayConfigured`,
+        `receiptSigningConfigured`, `processorConfigured`, and NOT `killSwitchActive`.
+      security: []
+      responses:
+        '200':
+          description: Ready — all components configured, kill switch off.
+          headers:
+            Content-Type: { $ref: '#/components/headers/ContentTypeHeader' }
+            Cache-Control: { $ref: '#/components/headers/CacheControlHeader' }
+            X-Content-Type-Options: { $ref: '#/components/headers/XContentTypeOptionsHeader' }
+            Referrer-Policy: { $ref: '#/components/headers/ReferrerPolicyHeader' }
+            X-Frame-Options: { $ref: '#/components/headers/XFrameOptionsHeader' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationReadiness' }
+              examples:
+                ready:
+                  $ref: '#/components/examples/ReadinessReady'
+        '503':
+          description: Not ready — at least one component unconfigured or the kill switch is active.
+          headers:
+            Content-Type: { $ref: '#/components/headers/ContentTypeHeader' }
+            Cache-Control: { $ref: '#/components/headers/CacheControlHeader' }
+            X-Content-Type-Options: { $ref: '#/components/headers/XContentTypeOptionsHeader' }
+            Referrer-Policy: { $ref: '#/components/headers/ReferrerPolicyHeader' }
+            X-Frame-Options: { $ref: '#/components/headers/XFrameOptionsHeader' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationReadiness' }
+              examples:
+                notReady:
+                  $ref: '#/components/examples/ReadinessNotReady'
+        '405':
+          description: 'Method not allowed. GET only; carries `Allow: GET`.'
+          headers:
+            Allow:
+              description: Always `GET`.
+              schema: { type: string, const: GET }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    const: METHOD_NOT_ALLOWED
+              examples:
+                methodNotAllowed:
+                  value: { error: METHOD_NOT_ALLOWED }
+
+  /process:
+    post:
+      operationId: processTransfer
+      tags: [Durable Processor]
+      summary: Process a gateway-forwarded transfer (service-to-service).
+      description: |
+        The durable processor's inbound route. The gateway calls this after it has
+        verified the ARMA request end-to-end; the forwarded headers carry the
+        gateway-verified context (`x-verified-arma-nonce`, `x-verified-arma-content-sha256`,
+        `x-integration-schema-version`, `x-integration-transfer-id`) over the
+        ORIGINAL raw envelope bytes under the Bearer token.
+
+        The processor never trusts the gateway blindly — it re-validates everything
+        defense-in-depth (Bearer auth, kill switch, forwarded-header consistency,
+        canonical envelope re-validation, payload-hash recompute, human-authorization
+        denial, org/case mapping, minimum-necessary disclosure policy) and then
+        commits nonce + idempotency + transfer + receipt + audit inside ONE
+        transaction.
+
+        Outcome model (all deterministic, gateway-compatible):
+          * 200 `accepted: true` — receipt fields (first delivery).
+          * 200 same receipt — duplicate delivery (fresh nonce, same idempotency
+            key + content): the stored deterministic receipt; no second disclosure.
+          * 200 `accepted: false` — business rejection (the processor's error code
+            + transferId + idempotencyKey; `quarantined: true` +
+            `violationPaths` for the policy/integrity quarantine codes).
+          * 500 — persistence failure (everything rolled back; fail closed).
+          * 503 — kill switch active, or processor fault.
+
+        Business rejection codes: `ORG_MAPPING_MISSING`, `ORG_MAPPING_INACTIVE`,
+        `ORG_MAPPING_MISMATCH`, `CASE_MAPPING_MISSING`, `CASE_MAPPING_INACTIVE`,
+        `CASE_MAPPING_MISMATCH`, `AUTHORIZER_UNKNOWN`, `AUTHORIZER_INACTIVE`,
+        `AUTHORIZER_ORG_MISMATCH`, `AI_CANNOT_AUTHORIZE_TRANSFER`,
+        `RECORD_TYPE_NOT_ALLOWED`, `MINIMUM_NECESSARY_VIOLATION`,
+        `ALWAYS_REDACTED_FIELD_PRESENT`, `REPLAYED_NONCE`,
+        `IDEMPOTENCY_KEY_CONFLICT`, `STALE_OR_FUTURE_REQUEST`, plus the
+        envelope re-validation codes (`INVALID_FIELD_*`, `INVALID_JSON`,
+        `INVALID_TIMESTAMPS`, `INVALID_TIME_ORDER`, `INVALID_NONCE`,
+        `INVALID_SYSTEM_ROUTE`, `MAPPING_REQUIRED`, `ORG_MAPPING_MISMATCH`,
+        `CASE_MAPPING_REQUIRED`, `PAYLOAD_REQUIRED`, `PAYLOAD_HASH_MISMATCH`,
+        `PAYLOAD_STRUCTURE_TOO_DEEP`, `TRANSFER_EXPIRED`,
+        `AI_OR_EXECUTABLE_INSTRUCTION_BLOCKED`, `SCHEMA_VERSION_UNSUPPORTED`,
+        `RECORD_TYPE_NOT_ALLOWED`). A defensive fallback code `INVALID_ENVELOPE`
+        exists for a non-Error throw out of envelope re-validation (unreachable
+        in practice; every re-validation failure carries its structured code).
+      security:
+        - ProcessorBearer: []
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/ForwardedNonce'
+        - $ref: '#/components/parameters/ForwardedContentSha256'
+        - $ref: '#/components/parameters/ForwardedSchemaVersion'
+        - $ref: '#/components/parameters/ForwardedTransferId'
+      requestBody:
+        required: true
+        description: |
+          The gateway-forwarded raw envelope bytes (the same body the gateway
+          verified), carried under the Bearer token with the forwarded
+          gateway-verified context headers.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferEnvelope'
+      responses:
+        '200':
+          description: |
+            Deterministic processing outcome: accepted receipt (first or duplicate
+            delivery) or business rejection. The `accepted` boolean discriminates.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ProcessorAccepted'
+                  - $ref: '#/components/schemas/ProcessorRejected'
+                discriminator:
+                  propertyName: accepted
+                  mapping:
+                    'true': '#/components/schemas/ProcessorAccepted'
+                    'false': '#/components/schemas/ProcessorRejected'
+              examples:
+                accepted:
+                  $ref: '#/components/examples/ProcessorAccepted'
+                duplicate:
+                  $ref: '#/components/examples/ProcessorAccepted'
+                replayedNonce:
+                  $ref: '#/components/examples/ProcReplayedNonce'
+                orgMappingInactive:
+                  $ref: '#/components/examples/ProcOrgMappingInactive'
+                idempotencyConflict:
+                  $ref: '#/components/examples/ProcIdempotencyConflict'
+                alwaysRedacted:
+                  $ref: '#/components/examples/ProcAlwaysRedacted'
+        '400':
+          description: |
+            Malformed forwarded request. Codes: `INVALID_JSON` (empty/unparseable
+            body), `INVALID_NONCE` (forwarded nonce fails the pattern),
+            `INVALID_CONTENT_HASH` (forwarded hash not 64-hex), `PROCESSOR_TRANSFER_ID_MISMATCH`,
+            `PROCESSOR_CONTENT_HASH_MISMATCH` (recomputed hash differs). Bodies
+            follow the `rejectedWireShape` (four keys, null ids when the
+            envelope was not yet parsed); `PROCESSOR_TRANSFER_ID_MISMATCH` and
+            `PROCESSOR_CONTENT_HASH_MISMATCH` carry the real envelope ids.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorRejected' }
+              examples:
+                invalidNonce:
+                  value: { accepted: false, error: INVALID_NONCE, transferId: null, idempotencyKey: null }
+                invalidJson:
+                  value: { accepted: false, error: INVALID_JSON, transferId: null, idempotencyKey: null }
+                processorContentHashMismatch:
+                  value: { accepted: false, error: PROCESSOR_CONTENT_HASH_MISMATCH, transferId: TRX-0001, idempotencyKey: IDK-0001 }
+
+        '401':
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                authFailed:
+                  value: { accepted: false, error: PROCESSOR_AUTH_FAILED }
+        '404':
+          description: Unknown processor route/method.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                notFound:
+                  value: { accepted: false, error: NOT_FOUND }
+        '413':
+          description: Body exceeds 1,048,576 bytes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                payloadTooLarge:
+                  value: { accepted: false, error: PAYLOAD_TOO_LARGE }
+        '422':
+          description: Forwarded schema version is not `arma-lawshield.v1`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                schemaVersionUnsupported:
+                  value: { accepted: false, error: SCHEMA_VERSION_UNSUPPORTED }
+        '500':
+          description: |
+            Persistence failure — the transaction rolled back, nothing persisted,
+            fail closed. Codes: `PROCESSOR_PERSISTENCE_FAILED` (including masked
+            test-only fault injections) or the known passthrough failures
+            `TRANSFER_ALREADY_PROCESSED`, `IDEMPOTENCY_RECEIPT_DIVERGENCE`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorRejected' }
+              examples:
+                persistenceFailed:
+                  value: { accepted: false, error: PROCESSOR_PERSISTENCE_FAILED, transferId: TRX-0001, idempotencyKey: IDK-0001 }
+        '503':
+          description: Kill switch active (`PROCESSOR_DISABLED`) or processor fault (`PROCESSOR_UNAVAILABLE`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                processorDisabled:
+                  value: { accepted: false, error: PROCESSOR_DISABLED }
+                processorUnavailable:
+                  value: { accepted: false, error: PROCESSOR_UNAVAILABLE, transferId: null, idempotencyKey: null }
+        default:
+          description: Unexpected response (never a raw runtime message — masked to a structured code).
+
+  /status:
+    get:
+      operationId: getTransferStatus
+      tags: [Durable Processor]
+      summary: Query durable transfer status for reconciliation (service-to-service).
+      description: |
+        Reconciliation inquiry over the ACTUAL durable upstream state — used by
+        ARMA after an ambiguous outcome (timeout, receipt mismatch, lost response)
+        instead of guessing. Lookup by `transferId` and/or `idempotencyKey`.
+        Quarantined state is exposed for human review.
+
+        The kill switch is checked FIRST — nothing (not even status) is served
+        while the processor is disabled.
+      security:
+        - ProcessorBearer: []
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - name: transferId
+          in: query
+          required: false
+          description: Durable transfer id to look up.
+          schema: { type: string, minLength: 1 }
+        - name: idempotencyKey
+          in: query
+          required: false
+          description: Idempotency key to look up (used with `schemaVersion`).
+          schema: { type: string, minLength: 1 }
+        - name: schemaVersion
+          in: query
+          required: false
+          description: Defaults to `arma-lawshield.v1`.
+          schema: { type: string, const: arma-lawshield.v1, default: arma-lawshield.v1 }
+      responses:
+        '200':
+          description: |
+            Durable status found. `status` is one of `ACCEPTED`, `REJECTED`,
+            `QUARANTINED`. Audit events are scrubbed to structural fields only
+            (no `detail` — payload content can never appear here).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusResponse' }
+              examples:
+                accepted:
+                  $ref: '#/components/examples/StatusAccepted'
+                quarantined:
+                  $ref: '#/components/examples/StatusQuarantined'
+        '400':
+          description: Neither `transferId` nor `idempotencyKey` provided.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                criteriaRequired:
+                  value: { accepted: false, error: STATUS_LOOKUP_CRITERIA_REQUIRED }
+        '401':
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                authFailed:
+                  value: { accepted: false, error: PROCESSOR_AUTH_FAILED }
+        '404':
+          description: No durable record for the given lookup — never a guess.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusNotFound' }
+              examples:
+                transferNotFoundByTransferId:
+                  value: { found: false, transferId: TRX-UNKNOWN, idempotencyKey: null, error: TRANSFER_NOT_FOUND }
+                transferNotFoundByIdempotencyKey:
+                  value: { found: false, transferId: null, idempotencyKey: IDK-UNKNOWN, error: TRANSFER_NOT_FOUND }
+        '422':
+          description: '`schemaVersion` parameter is not `arma-lawshield.v1`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                schemaVersionUnsupported:
+                  value: { accepted: false, error: SCHEMA_VERSION_UNSUPPORTED }
+        '503':
+          description: Kill switch active (`PROCESSOR_DISABLED`) or processor fault.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessorError' }
+              examples:
+                processorDisabled:
+                  value: { accepted: false, error: PROCESSOR_DISABLED }
+
+components:
+  securitySchemes:
+    ArmaSignedRequest:
+      type: apiKey
+      description: |
+        HMAC-SHA256 request-signing scheme over the five required `x-arma-*`
+        headers. The signature is computed over the 4-field canonical string:
+
+          `schemaVersion + "\n" + timestamp + "\n" + nonce + "\n" + bodyHash`
+
+        where `bodyHash` is the lowercase-hex sha256 of the RAW request body
+        bytes, `timestamp` and `nonce` are the EXACT header values, and
+        `schemaVersion` is `arma-lawshield.v1`. Both the `x-arma-content-sha256`
+        header and the canonical `bodyHash` term are sha256-hex of the same raw
+        bytes. A bodyless request has no representation in this protocol (the
+        single route is a POST with a required body).
+      name: x-arma-signature
+      in: header
+    ProcessorBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Service-to-service Bearer token for the durable processor routes. The
+        gateway presents it when forwarding to `POST /process`; ARMA
+        reconciliation presents it for `GET /status`. Missing or invalid token
+        fails closed with `PROCESSOR_AUTH_FAILED`.
+
+        Bearer authentication is ADDITIVE to — never a replacement for — the
+        forwarded-context re-validation, canonical envelope re-validation, and
+        business-policy enforcement the processor performs on every request.
+
+  parameters:
+    ArmaSchemaVersion:
+      name: x-arma-schema-version
+      in: header
+      required: true
+      description: Must be exactly `arma-lawshield.v1`.
+      schema: { type: string, const: arma-lawshield.v1 }
+    ArmaTimestamp:
+      name: x-arma-timestamp
+      in: header
+      required: true
+      description: Epoch milliseconds; must be within ±300,000 ms (5 minutes) of server time.
+      schema: { type: string, pattern: '^[0-9]+$' }
+    ArmaNonce:
+      name: x-arma-nonce
+      in: header
+      required: true
+      description: Single-use nonce; 20–128 chars of `A-Za-z0-9_-`; 10-minute validity window.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{20,128}$' }
+    ArmaContentSha256:
+      name: x-arma-content-sha256
+      in: header
+      required: true
+      description: Lowercase-hex sha256 of the raw request body bytes.
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ArmaSignature:
+      name: x-arma-signature
+      in: header
+      required: true
+      description: Lowercase-hex HMAC-SHA256 over the 4-field canonical string.
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ContentType:
+      name: content-type
+      in: header
+      required: true
+      description: Must start with `application/json` (case-insensitive).
+      schema: { type: string, pattern: '^[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn]/[Jj][Ss][Oo][Nn]' }
+    Authorization:
+      name: authorization
+      in: header
+      required: true
+      description: 'Bearer token for the processor (service-to-service).'
+      schema: { type: string, pattern: '^Bearer .+$' }
+    ForwardedNonce:
+      name: x-verified-arma-nonce
+      in: header
+      required: true
+      description: The gateway-verified nonce, forwarded for the processor's authoritative registry.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{20,128}$' }
+    ForwardedContentSha256:
+      name: x-verified-arma-content-sha256
+      in: header
+      required: true
+      description: The gateway-verified sha256 of the raw envelope bytes (64 lowercase hex).
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ForwardedSchemaVersion:
+      name: x-integration-schema-version
+      in: header
+      required: true
+      description: Must be `arma-lawshield.v1` (forwarded by the gateway).
+      schema: { type: string, const: arma-lawshield.v1 }
+    ForwardedTransferId:
+      name: x-integration-transfer-id
+      in: header
+      required: false
+      description: |
+        The gateway-verified transfer id; when present it must match the
+        envelope's `transferId` (else `PROCESSOR_TRANSFER_ID_MISMATCH`).
+      schema: { type: string, minLength: 1 }
+
+  headers:
+    LawShieldContentSha256:
+      description: sha256 (lowercase hex) of the EXACT serialized receipt bytes.
+      required: true
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    LawShieldSignature:
+      description: HMAC-SHA256 (lowercase hex) over the EXACT serialized receipt bytes.
+      required: true
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    LawShieldSchemaVersion:
+      description: Receipt schema version (`arma-lawshield.v1`).
+      required: true
+      schema: { type: string, const: arma-lawshield.v1 }
+    LawShieldReceiptId:
+      description: The receipt id (matches the body's `receiptId`).
+      required: true
+      schema: { type: string, minLength: 1 }
+    ContentTypeHeader:
+      description: Response media type.
+      required: true
+      schema: { type: string, const: application/json }
+    CacheControlHeader:
+      description: No-store on every response.
+      required: true
+      schema: { type: string, const: no-store }
+    XContentTypeOptionsHeader:
+      description: nosniff on every response.
+      required: true
+      schema: { type: string, const: nosniff }
+    ReferrerPolicyHeader:
+      description: no-referrer on every response.
+      required: true
+      schema: { type: string, const: no-referrer }
+    XFrameOptionsHeader:
+      description: DENY on every response.
+      required: true
+      schema: { type: string, const: DENY }
+
+  schemas:
+    TransferEnvelope:
+      type: object
+      description: |
+        The ARMA→Law Shield transfer envelope for protocol `arma-lawshield.v1`.
+        All 11 required string fields must be non-empty; `mapping` must be
+        present and consistent; timestamps must satisfy `createdAt ≤ sentAt < expiresAt`
+        with `expiresAt` in the future; `payloadHash` must equal sha256 of
+        `JSON.stringify(payload)` exactly; `authorizedBy` must not be an AI actor.
+      required:
+        - schemaVersion
+        - transferId
+        - idempotencyKey
+        - sourceSystem
+        - destinationSystem
+        - armaOrgId
+        - lawShieldOrgId
+        - recordType
+        - recordId
+        - authorizedBy
+        - authorizationReason
+        - mapping
+        - createdAt
+        - sentAt
+        - expiresAt
+        - payload
+        - payloadHash
+      properties:
+        schemaVersion:
+          type: string
+          const: arma-lawshield.v1
+        transferId:
+          type: string
+          minLength: 1
+          description: Unique transfer id (e.g. `TRX-0001`).
+        idempotencyKey:
+          type: string
+          minLength: 1
+          description: Idempotency key; same key + same content collapses to the same receipt; different content is a quarantined integrity conflict.
+        sourceSystem:
+          type: string
+          const: ARMA_360
+        destinationSystem:
+          type: string
+          const: LAW_SHIELD
+        armaOrgId:
+          type: string
+          minLength: 1
+        lawShieldOrgId:
+          type: string
+          minLength: 1
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        recordId:
+          type: string
+          minLength: 1
+        authorizedBy:
+          type: string
+          minLength: 1
+          description: |
+            HUMAN user id only. Values beginning `AI:` or the exact names `AI`,
+            `JOY`, `ROSE` (and `authorizationMode: 'AI'` where present) are
+            rejected with `AI_CANNOT_AUTHORIZE_TRANSFER`.
+        authorizationMode:
+          type: string
+          description: Optional; MUST NOT be `AI` (same human-only rule).
+          enum: [HUMAN]
+        authorizationReason:
+          type: string
+          minLength: 1
+        mapping:
+          type: object
+          description: |
+            Explicit ARMA↔Law Shield org mapping; must match the envelope's
+            `armaOrgId`/`lawShieldOrgId`. When `incidentId` is present,
+            `lawShieldCaseId` is required.
+          required: [armaOrgId, lawShieldOrgId]
+          properties:
+            armaOrgId:
+              type: string
+              minLength: 1
+            lawShieldOrgId:
+              type: string
+              minLength: 1
+            lawShieldCaseId:
+              type: string
+              description: Required when `incidentId` is present on the envelope.
+        incidentId:
+          type: string
+          description: Optional; presence requires a mapped `lawShieldCaseId`.
+        disclosurePurpose:
+          type: string
+          description: Optional disclosure purpose.
+        createdAt:
+          type: number
+          description: Epoch ms; `sentAt` must be ≥ `createdAt`.
+        sentAt:
+          type: number
+          description: Epoch ms; must be within the nonce validity window (10 min) of processor time.
+        expiresAt:
+          type: number
+          description: Epoch ms; must be in the future (`TRANSFER_EXPIRED` otherwise).
+        payload:
+          type: object
+          description: |
+            The FLAT minimum-necessary redacted payload (redactor output is the
+            envelope payload — no wrapper). Free-form JSON object bounded by:
+            max nesting depth 20 (`PAYLOAD_STRUCTURE_TOO_DEEP`), no
+            executable/AI-instruction keys anywhere (`AI_OR_EXECUTABLE_INSTRUCTION_BLOCKED`),
+            and processor-side per-record-type allow-lists
+            (`MINIMUM_NECESSARY_VIOLATION` / `ALWAYS_REDACTED_FIELD_PRESENT`).
+          additionalProperties: true
+        payloadHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: sha256 of `JSON.stringify(payload)` — byte-exact, key order matters.
+
+    RecordType:
+      type: string
+      description: The seven allowed record types for `arma-lawshield.v1`.
+      enum:
+        - CASE_REFERRAL
+        - INCIDENT_METADATA
+        - EVIDENCE_MANIFEST
+        - EVIDENCE_PACKAGE_REFERENCE
+        - CHAIN_OF_CUSTODY_UPDATE
+        - TRANSFER_STATUS
+        - CASE_STATUS_UPDATE
+
+    LawShieldReceipt:
+      type: object
+      description: |
+        The success receipt — 15 fields, D1-additive `accepted: true` alongside
+        the v1 `status: "ACCEPTED"`. The gateway signs the EXACT serialized
+        receipt bytes; verify raw, never re-serialize.
+      required:
+        - schemaVersion
+        - receiptId
+        - transferId
+        - idempotencyKey
+        - status
+        - accepted
+        - acceptedAt
+        - armaOrgId
+        - lawShieldOrgId
+        - incidentId
+        - lawShieldCaseId
+        - recordType
+        - recordId
+        - receivedPayloadHash
+        - processingResult
+      properties:
+        schemaVersion:
+          type: string
+          const: arma-lawshield.v1
+        receiptId:
+          type: string
+          description: 'Pattern `RCP-<transferId>` in the reference implementation.'
+        transferId:
+          type: string
+        idempotencyKey:
+          type: string
+        status:
+          type: string
+          const: ACCEPTED
+        accepted:
+          type: boolean
+          const: true
+        acceptedAt:
+          type: number
+          description: Epoch ms.
+        armaOrgId:
+          type: string
+        lawShieldOrgId:
+          type: string
+        incidentId:
+          type: [string, 'null']
+          description: The envelope's incidentId, or null.
+        lawShieldCaseId:
+          type: [string, 'null']
+          description: The mapping's case id, or null.
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        recordId:
+          type: string
+        receivedPayloadHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        processingResult:
+          type: string
+          enum: [PERSISTED]
+          description: Default `PERSISTED` when the processor does not report one.
+
+    GatewayError:
+      type: object
+      description: |
+        Gateway error body. `transferId` is `null` for every failure raised
+        BEFORE the verified envelope is read (kill switch, signing-secret and
+        receipt-secret configuration, payload size, missing security headers,
+        unsupported schema version, invalid nonce, stale/future timestamp,
+        body-hash mismatch, invalid signature, malformed/non-JSON body, and all
+        envelope-validation failures — INVALID_FIELD_*, INVALID_SYSTEM_ROUTE,
+        AI denial, MAPPING_REQUIRED, ORG/CASE mapping mismatches,
+        INVALID_TIMESTAMPS, TRANSFER_EXPIRED, INVALID_TIME_ORDER,
+        PAYLOAD_REQUIRED, PAYLOAD_HASH_MISMATCH, injection screen,
+        PAYLOAD_STRUCTURE_TOO_DEEP, RECORD_TYPE_NOT_ALLOWED, SCHEMA_VERSION_UNSUPPORTED
+        body value). It carries the envelope's real `transferId` only for
+        `REPLAYED_NONCE` (thrown after verification), the post-verification
+        processor-configuration check (`INTEGRATION_PROCESSOR_NOT_CONFIGURED`),
+        and all processor-outcome passthroughs. Optional discriminators:
+        `retryable` (PROCESSOR_TIMEOUT / PROCESSOR_UNAVAILABLE transport codes),
+        `reconciliationRequired` (PROCESSOR_RECEIPT_MISMATCH), `processorStatus`
+        (processor business-rejection passthrough).
+      required: [error, transferId, accepted]
+      properties:
+        error:
+          type: string
+          description: Structured error code (never a raw runtime message).
+        transferId:
+          type: [string, 'null']
+        accepted:
+          type: boolean
+          const: false
+        retryable:
+          type: boolean
+          description: Present (true) on PROCESSOR_TIMEOUT / PROCESSOR_UNAVAILABLE.
+        reconciliationRequired:
+          type: boolean
+          description: Present (true) on PROCESSOR_RECEIPT_MISMATCH.
+        processorStatus:
+          type: number
+          description: Processor HTTP status, present on processor business-rejection passthrough.
+
+    GatewayErrorNoTransferId:
+      type: object
+      description: Gateway error body for method/content-type checks (no transferId key at all).
+      required: [error, accepted]
+      properties:
+        error:
+          type: string
+        accepted:
+          type: boolean
+          const: false
+
+    IntegrationReadiness:
+      type: object
+      description: Readiness probe response (200 ready, 503 not-ready).
+      required:
+        - service
+        - ready
+        - schemaVersion
+        - gatewayConfigured
+        - receiptSigningConfigured
+        - processorConfigured
+        - killSwitchActive
+        - maxBodyBytes
+        - maxClockSkewMs
+        - allowedRecordTypes
+        - checkedAt
+      properties:
+        service:
+          type: string
+          const: law-shield-arma-integration
+        ready:
+          type: boolean
+        schemaVersion:
+          type: string
+          const: arma-lawshield.v1
+        gatewayConfigured:
+          type: boolean
+        receiptSigningConfigured:
+          type: boolean
+        processorConfigured:
+          type: boolean
+        killSwitchActive:
+          type: boolean
+        maxBodyBytes:
+          type: integer
+          const: 1048576
+        maxClockSkewMs:
+          type: integer
+          const: 300000
+        allowedRecordTypes:
+          type: array
+          items: { $ref: '#/components/schemas/RecordType' }
+        checkedAt:
+          type: number
+
+    ProcessorAccepted:
+      type: object
+      description: |
+        Processor acceptance wire shape — 6 fields. The gateway validates this
+        (accepted:true + receiptId + transferId/payloadHash consistency) before
+        constructing the 15-field partner receipt.
+      required: [accepted, receiptId, transferId, acceptedAt, processingResult, payloadHash]
+      properties:
+        accepted:
+          type: boolean
+          const: true
+        receiptId:
+          type: string
+        transferId:
+          type: string
+        acceptedAt:
+          type: number
+        processingResult:
+          type: string
+          enum: [PERSISTED]
+        payloadHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+
+    ProcessorRejected:
+      type: object
+      description: |
+        Processor business-rejection body (`rejectedWireShape`), returned with
+        HTTP 200 on in-band rejections, and 500 on persistence failures.
+        `transferId` / `idempotencyKey` are non-null when the envelope was
+        parsed (real ids), null for pre-envelope validation failures.
+        `quarantined: true` + `violationPaths` (field NAMES only, never
+        content) on the policy/integrity quarantine codes.
+      required: [accepted, error, transferId, idempotencyKey]
+      properties:
+        accepted:
+          type: boolean
+          const: false
+        error:
+          type: string
+          description: Structured processor error code.
+        transferId:
+          type: [string, 'null']
+        idempotencyKey:
+          type: [string, 'null']
+        quarantined:
+          type: boolean
+          description: True on MINIMUM_NECESSARY_VIOLATION, ALWAYS_REDACTED_FIELD_PRESENT, IDEMPOTENCY_KEY_CONFLICT.
+        violationPaths:
+          type: array
+          items: { type: string }
+          description: Field NAMES only — payload content can never appear here.
+
+    ProcessorError:
+      type: object
+      description: |
+        Processor handler-level error body for requests refused before
+        envelope parsing (Bearer auth, kill switch, lookup criteria, route
+        fallback): exactly `accepted: false` + `error`, with the exception of
+        the transport-fault 503 PROCESSOR_UNAVAILABLE which additionally
+        carries `transferId: null` + `idempotencyKey: null`.
+      required: [accepted, error]
+      properties:
+        accepted:
+          type: boolean
+          const: false
+        error:
+          type: string
+          description: Structured processor error code.
+        transferId:
+          type: [string, 'null']
+        idempotencyKey:
+          type: [string, 'null']
+
+    StatusResponse:
+      type: object
+      description: |
+        Durable transfer status (200). Audit events are scrubbed — structural
+        fields only, no `detail` (payload content can never appear).
+      required:
+        - found
+        - transferId
+        - idempotencyKey
+        - schemaVersion
+        - status
+        - receiptId
+        - acceptedAt
+        - quarantinedAt
+        - rejectedAt
+        - lastErrorCode
+        - payloadHash
+        - armaOrgId
+        - lawShieldOrgId
+        - incidentId
+        - lawShieldCaseId
+        - recordType
+        - recordId
+        - idempotency
+        - receipt
+        - auditEvents
+        - auditEventCount
+      properties:
+        found:
+          type: boolean
+          const: true
+        transferId:
+          type: string
+        idempotencyKey:
+          type: string
+        schemaVersion:
+          type: string
+          const: arma-lawshield.v1
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED, QUARANTINED]
+        receiptId:
+          type: [string, 'null']
+        acceptedAt:
+          type: [number, 'null']
+        quarantinedAt:
+          type: [number, 'null']
+        rejectedAt:
+          type: [number, 'null']
+        lastErrorCode:
+          type: [string, 'null']
+        payloadHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        armaOrgId:
+          type: string
+        lawShieldOrgId:
+          type: string
+        incidentId:
+          type: [string, 'null']
+        lawShieldCaseId:
+          type: [string, 'null']
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        recordId:
+          type: string
+        idempotency:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [outcome, receiptId, acceptedAt, errorCode]
+              properties:
+                outcome:
+                  type: string
+                  enum: [ACCEPTED, REJECTED, QUARANTINED]
+                receiptId:
+                  type: [string, 'null']
+                acceptedAt:
+                  type: [number, 'null']
+                errorCode:
+                  type: [string, 'null']
+        receipt:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [receiptId, acceptedAt, processingResult, payloadHash]
+              properties:
+                receiptId:
+                  type: string
+                acceptedAt:
+                  type: number
+                processingResult:
+                  type: string
+                  enum: [PERSISTED]
+                payloadHash:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+        auditEvents:
+          type: array
+          items:
+            type: object
+            required: [auditSequence, eventType, actorType, source, outcome, createdAt]
+            properties:
+              auditSequence:
+                type: integer
+              eventType:
+                type: string
+              actorType:
+                type: string
+                enum: [GATEWAY, PROCESSOR]
+              source:
+                type: string
+              outcome:
+                type: string
+              createdAt:
+                type: number
+        auditEventCount:
+          type: integer
+
+    StatusNotFound:
+      type: object
+      description: |
+        404 body from the durable status lookup when no durable record exists
+        for the provided transferId or idempotencyKey. Distinct from the
+        ProcessorRejected wire shape: it carries no `accepted` key, and each
+        lookup criterion echoes back the value that was searched (null when the
+        other criterion was used).
+      required: [found, transferId, idempotencyKey, error]
+      properties:
+        found:
+          type: boolean
+          const: false
+        transferId:
+          type: [string, 'null']
+        idempotencyKey:
+          type: [string, 'null']
+        error:
+          type: string
+          const: TRANSFER_NOT_FOUND
+
+  examples:
+    ReceiptAccepted:
+      value:
+        schemaVersion: arma-lawshield.v1
+        receiptId: RCP-TRX-0001
+        transferId: TRX-0001
+        idempotencyKey: IDK-0001
+        status: ACCEPTED
+        accepted: true
+        acceptedAt: 1760000002000
+        armaOrgId: org-arma-1
+        lawShieldOrgId: ls-org-1
+        incidentId: INC-1001
+        lawShieldCaseId: LS-CASE-1
+        recordType: CASE_REFERRAL
+        recordId: rec-0001
+        receivedPayloadHash: 3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe
+        processingResult: PERSISTED
+    GwInvalidJson:
+      value: { error: INVALID_JSON, transferId: null, accepted: false }
+    GwInvalidNonce:
+      value: { error: INVALID_NONCE, transferId: null, accepted: false }
+    GwInvalidField:
+      value: { error: INVALID_FIELD_transferId, transferId: null, accepted: false }
+    GwInvalidSignature:
+      value: { error: INVALID_SIGNATURE, transferId: null, accepted: false }
+    GwBodyHashMismatch:
+      value: { error: BODY_HASH_MISMATCH, transferId: null, accepted: false }
+    GwAiCannotAuthorize:
+      value: { error: AI_CANNOT_AUTHORIZE_TRANSFER, transferId: null, accepted: false }
+    GwReplayedNonce:
+      value: { error: REPLAYED_NONCE, transferId: TRX-0001, accepted: false }
+    GwSchemaVersionUnsupported:
+      value: { error: SCHEMA_VERSION_UNSUPPORTED, transferId: null, accepted: false }
+    GwRecordTypeNotAllowed:
+      value: { error: RECORD_TYPE_NOT_ALLOWED, transferId: null, accepted: false }
+    GwProcessorTimeout:
+      value: { error: PROCESSOR_TIMEOUT, transferId: TRX-0001, accepted: false, retryable: true }
+    GwProcessorUnavailable:
+      value: { error: PROCESSOR_UNAVAILABLE, transferId: TRX-0001, accepted: false, retryable: true }
+    GwProcessorReceiptMismatch:
+      value: { error: PROCESSOR_RECEIPT_MISMATCH, transferId: TRX-0001, accepted: false, reconciliationRequired: true }
+    GwProcessorBusinessRejection:
+      value: { error: ORG_NOT_AUTHORIZED, transferId: TRX-0001, accepted: false, processorStatus: 200 }
+    GwProcessorNonJson:
+      value: { error: PROCESSOR_NON_JSON_RESPONSE, transferId: TRX-0001, accepted: false }
+    ReadinessReady:
+      value:
+        service: law-shield-arma-integration
+        ready: true
+        schemaVersion: arma-lawshield.v1
+        gatewayConfigured: true
+        receiptSigningConfigured: true
+        processorConfigured: true
+        killSwitchActive: false
+        maxBodyBytes: 1048576
+        maxClockSkewMs: 300000
+        allowedRecordTypes: [CASE_REFERRAL, INCIDENT_METADATA, EVIDENCE_MANIFEST, EVIDENCE_PACKAGE_REFERENCE, CHAIN_OF_CUSTODY_UPDATE, TRANSFER_STATUS, CASE_STATUS_UPDATE]
+        checkedAt: 1760000003000
+    ReadinessNotReady:
+      value:
+        service: law-shield-arma-integration
+        ready: false
+        schemaVersion: arma-lawshield.v1
+        gatewayConfigured: true
+        receiptSigningConfigured: true
+        processorConfigured: false
+        killSwitchActive: false
+        maxBodyBytes: 1048576
+        maxClockSkewMs: 300000
+        allowedRecordTypes: [CASE_REFERRAL, INCIDENT_METADATA, EVIDENCE_MANIFEST, EVIDENCE_PACKAGE_REFERENCE, CHAIN_OF_CUSTODY_UPDATE, TRANSFER_STATUS, CASE_STATUS_UPDATE]
+        checkedAt: 1760000003000
+    ProcessorAccepted:
+      value:
+        accepted: true
+        receiptId: RCP-TRX-0001
+        transferId: TRX-0001
+        acceptedAt: 1760000002000
+        processingResult: PERSISTED
+        payloadHash: 3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe
+    ProcReplayedNonce:
+      value: { accepted: false, error: REPLAYED_NONCE, transferId: TRX-0001, idempotencyKey: IDK-0001 }
+    ProcOrgMappingInactive:
+      value: { accepted: false, error: ORG_MAPPING_INACTIVE, transferId: TRX-0001, idempotencyKey: IDK-0001 }
+    ProcIdempotencyConflict:
+      value: { accepted: false, error: IDEMPOTENCY_KEY_CONFLICT, transferId: TRX-0001, idempotencyKey: IDK-0001, quarantined: true }
+    ProcAlwaysRedacted:
+      value:
+        accepted: false
+        error: ALWAYS_REDACTED_FIELD_PRESENT
+        transferId: TRX-0001
+        idempotencyKey: IDK-0001
+        quarantined: true
+        violationPaths: [ssn (always-redacted)]
+    StatusAccepted:
+      value:
+        found: true
+        transferId: TRX-0001
+        idempotencyKey: IDK-0001
+        schemaVersion: arma-lawshield.v1
+        status: ACCEPTED
+        receiptId: RCP-TRX- Proc0001
+        acceptedAt: 1760000002000
+        quarantinedAt: null
+        rejectedAt: null
+        lastErrorCode: null
+        payloadHash: 3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe
+        armaOrgId: org-arma-1
+        lawShieldOrgId: ls-org-1
+        incidentId: INC-1001
+        lawShieldCaseId: LS-CASE-1
+        recordType: CASE_REFERRAL
+        recordId: rec-0001
+        idempotency:
+          outcome: ACCEPTED
+          receiptId: RCP-TRX-0001
+          acceptedAt: 1760000002000
+          errorCode: null
+        receipt:
+          receiptId: RCP-TRX-0001
+          acceptedAt: 1760000002000
+          processingResult: PERSISTED
+          payloadHash: 3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe
+        auditEvents:
+          - auditSequence: 1
+            eventType: TRANSFER_ACCEPTED
+            actorType: PROCESSOR
+            source: PROCESSOR_DECISION
+            outcome: ACCEPTED
+            createdAt: 1760000002000
+        auditEventCount: 1
+    StatusQuarantined:
+      value:
+        found: true
+        transferId: TRX-0001
+        idempotencyKey: IDK-0001
+        schemaVersion: arma-lawshield.v1
+        status: QUARANTINED
+        receiptId: null
+        acceptedAt: null
+        quarantinedAt: 1760000002000
+        rejectedAt: null
+        lastErrorCode: ALWAYS_REDACTED_FIELD_PRESENT
+        payloadHash: 3a2d55f9d5e8b7c6a1f0e9d8c7b6a5f4e3d2c1b0a99887766554433221100ffe
+        armaOrgId: org-arma-1
+        lawShieldOrgId: ls-org-1
+        incidentId: INC-1001
+        lawShieldCaseId: LS-CASE-1
+        recordType: CASE_REFERRAL
+        recordId: rec-0001
+        idempotency:
+          outcome: QUARANTINED
+          receiptId: null
+          acceptedAt: null
+          errorCode: ALWAYS_REDACTED_FIELD_PRESENT
+        receipt: null
+        auditEvents:
+          - auditSequence: 1
+            eventType: TRANSFER_QUARANTINED
+            actorType: PROCESSOR
+            source: PROCESSOR_DECISION
+            outcome: QUARANTINED
+            createdAt: 1760000002000
+        auditEventCount: 1
