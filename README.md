@@ -1,15 +1,13 @@
-# ARMA Partner API Sandbox
+# ARMA Partner API Sandbox — Certified Reference (Stop Point 11, final close)
 
-Temporary sanitized public integration workspace for ARMA System 360 partner APIs.
+**Status: FINAL.** This sandbox is closed and certified at Stop Point 11. Final certified state: **662 certification rows — 662 PASS / 0 FAIL / 0 NOT-TESTED** across **36 lanes** and **21 categories** (539 `pnpm test` tests plus the 123-scenario synthetic contract matrix), verified on every push by CI. Read the one-page certified state without running anything: [`docs/certification/certification-report.html`](docs/certification/certification-report.html) (self-contained, zero JavaScript) — machine-readable source of truth: [`docs/certification/certification-report.json`](docs/certification/certification-report.json). The full stop-point chain of custody from the SP1 baseline audit to this close is `docs/STOP-POINT-1-BASELINE.md` → `docs/STOP-POINT-11-REPORT.md`; the final acceptance record with the SP1–SP10 acceptance matrix and the complete gap-disposition register is `docs/STOP-POINT-11-REPORT.md`.
 
-## Purpose
+## What this sandbox is — and is not
 
-This repository contains only the integration-facing code, contracts, synthetic tests, and documentation needed to continue development without exposing the private repositories or their Git history.
+This repository is the **synthetic, sanitized public reference** for ARMA System 360 partner integration work: the integration-facing code, machine-checkable contracts, synthetic tests, certification artifacts, and documentation needed to continue development without exposing the private repositories or their Git history.
 
-Current lanes:
-
-- `law-shield/` — ARMA System 360 <-> Law Shield secure transfer API. Law Shield remains a legally and technically separate system.
-- `patches/` — ARMA System 360 <-> PATCHES partner API. PATCHES remains an independent licensed platform and is Phase 2 for ARMA launch.
+- **It is:** a runnable contract-level reference — the ARMA ↔ Law Shield secure transfer API (inbound gateway, ARMA outbound state machine, durable processor), the complete sanitized PATCHES Partner API v1 (server + ARMA adapter), the AI safety + governance contract, the shared partner integration platform (SDK, registry, webhooks, observability), synthetic partner simulators with a 40-mode failure harness, OpenAPI 3.1 contracts for both partner surfaces, and a fail-closed certification reporter. All tests run in-process or over `127.0.0.1` with synthetic data only — nothing here touches a real partner, a real database, or the public network.
+- **It is not:** production, and passing its tests confers no production readiness. No production secrets, tokens, credentials, private keys, customer data, incident evidence, privileged Law Shield data, LISA/legal packages, private Git history, proprietary AI engines, or prompts exist anywhere in it. Private-repo production work (durable Convex persistence, real secret management, push delivery, operator tooling, UI wiring) is enumerated per-lane in each stop-point report's gaps and porting notes and is consolidated in the Stop Point 11 gap-disposition register (`docs/STOP-POINT-11-REPORT.md` §5) as ACCEPTED-AS-SANDBOX-SCOPE or PORTED-TO-PRIVATE-REPO.
 
 ## Non-negotiable boundaries
 
@@ -19,6 +17,64 @@ Current lanes:
 - All examples and tests must use synthetic data.
 - Integration must fail closed when authentication, authorization, mapping, integrity, processor, or receipt verification fails.
 - Do not rebuild the obsolete embedded ARMA Attorney Portal.
+
+## Architecture at a glance
+
+```
+law-shield/   ARMA ↔ Law Shield secure transfer API
+  arma/            ARMA outbound half: transfer state machine, human-only authorization,
+                   minimum-necessary redaction, raw-byte receipt verification, reconciliation, retry policy
+  lawshield/       Law Shield inbound half: verification gateway (HMAC, timestamp/nonce, replay guard,
+                   prompt-injection rejection, kill switch) + durable processor (registries, policy,
+                   transactional persistence, audit, status/reconciliation)
+  openapi/         ARMA Law Shield API v1 — OpenAPI 3.1 contract
+patches/     ARMA ↔ PATCHES Partner API v1
+  lib/             sanitized reference partner API server (auth, rotation, tenant isolation,
+                   entitlements, activations, receipts, audit, rate limiting, kill switch)
+  arma/            ARMA-side adapter: signed partner client, activation state machine, 11-table
+                   Convex-shaped reference persistence
+  patches/         live health route (never force-static cached)
+  tests/           contract + adapter lanes (78 tests)
+ai-governance/   AI safety + governance contract: five designations, engine registry, provenance
+                 envelopes, guards, protected-action policy, append-only metadata-only audit
+shared/          partner integration platform: SDK signing/receipts/retries/errors/health, partner
+                 registry, signed webhook/event framework, observability contract
+simulators/      synthetic partner simulators + 40-mode failure harness + contract runner (123 scenarios)
+openapi/         PATCHES Partner API v1 — OpenAPI 3.1 contract + three-layer test lane
+certification/   fail-closed certification reporter engine + its own 66-test acceptance lane
+scripts/         certification-report generator/verifier, OpenAPI docs renderer
+docs/            stop-point reports (chain of custody), certification artifacts, rendered OpenAPI docs
+```
+
+## Lane inventory — certified state per lane (36 lanes, 662 rows)
+
+| Lane | Tests | Lane | Tests |
+|---|---|---|---|
+| `law-shield` gateway security | 30 | `shared` SDK (9 files) | 133 |
+| `law-shield` ARMA transfer | 14 | `shared` partner registry | 17 |
+| `law-shield` contract compat | 4 | `shared` synthetic e2e | 11 |
+| `law-shield` durable processor | 22 | `shared` webhooks | 28 |
+| `law-shield` synthetic e2e | 1 | `shared` observability | 18 |
+| `patches` partner API contract | 30 | `simulators` happy path | 7 |
+| `patches` ARMA adapter | 48 | `simulators` config-driven | 24 |
+| `ai-governance` (6 files) | 56 | `simulators` failure modes | 10 |
+| `openapi` structure + cross-check + live conformance | 8 | `simulators` contract runner | 12 |
+| `certification` reporter (2 files) | 66 | `simulators` contract matrix (in-process) | 123 |
+
+Every lane is green in the committed certification report; the SP8 contract matrix (123 scenarios over 11 categories: SIGNATURE 15, REPLAY 9, RECEIPT 12, AUTHORIZATION 24, ENTITLEMENT 21, WEBHOOK 15, RETRY 12, RECONCILIATION 6, CIRCUIT_BREAKER 3, KILL_SWITCH 3, CONTROL 3) is certified in-process by the same reporter. The reporter RECORDS; the lanes gate CI — and CI regenerates and lockstep-checks the committed report on every push.
+
+## How to run the certified state
+
+- `pnpm install --frozen-lockfile` — zero runtime dependencies, Node 24 built-ins only
+- `pnpm typecheck` — strict TypeScript check
+- `pnpm test` — all 539 tests (the exact command CI runs)
+- `pnpm certify:generate` then `git diff --exit-code -- docs/certification/` — regenerate the report and verify lockstep (must be byte-identical)
+- `pnpm certify:verify` — verify the committed artifacts (invariants, HTML↔JSON lockstep, synthetic forbidden-material no-leak sweep)
+- Per-lane runs: `pnpm test:lawshield` / `test:patches` / `test:aigov` / `test:shared` / `test:simulators` / `test:openapi`; `pnpm render:openapi-docs` re-renders the static contract docs
+
+## The stop-point chain (chain of custody)
+
+Every stop point shipped one feature commit plus its owner-review report, fast-forward published only, with CI green on the final head: SP1 baseline audit (defects D1–D4 found) → SP2 D1–D4 fixes + ARMA outbound half + runnable suite → SP3 durable processor + e2e → SP4 PATCHES Partner API v1 → SP5 ARMA PATCHES adapter → SP6 AI governance → SP7 shared platform → SP8 simulators + failure harness → SP9 OpenAPI contracts → SP10 certification reporter → **SP11 final certification (this close)**. The acceptance matrix grounding every stop point in certification rows, and the disposition of every gap registered since SP1, is in `docs/STOP-POINT-11-REPORT.md`.
 
 ## Existing Law Shield work included
 
