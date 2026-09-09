@@ -17,7 +17,9 @@
     "test:patches": "node --test \"patches/tests/**/*.test.mjs\"",
     "test:shared": "node --test \"shared/tests/**/*.test.mjs\"",
     "test:simulators": "node --test \"simulators/tests/**/*.test.mjs\"",
-    "render:openapi-docs": "node scripts/render-openapi-docs.mjs"
+    "render:openapi-docs": "node scripts/render-openapi-docs.mjs",
+    "certify:generate": "node scripts/generate-certification-report.mjs",
+    "certify:verify": "node scripts/verify-certification-report.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

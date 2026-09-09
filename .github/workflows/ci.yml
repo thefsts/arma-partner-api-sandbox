@@ -23,6 +23,17 @@ jobs:
         run: pnpm typecheck
       - name: Tests (synthetic only)
         run: pnpm test
+      - name: Certification report (generate — records, does not gate)
+        run: pnpm certify:generate
+      - name: Certification report lockstep (regenerated artifact must match the committed one)
+        run: |
+          git diff --exit-code -- docs/certification/ || {
+            echo "::error::Certification report out of lockstep with the tree — regenerate and commit (pnpm certify:generate)."
+            git diff -- docs/certification/
+            exit 1
+          }
+      - name: Certification report verification (integrity gate)
+        run: pnpm certify:verify
       - name: Secret scan (non-blocking informational)
         run: |
           echo "Scanning for obvious secret patterns in tracked files..."
